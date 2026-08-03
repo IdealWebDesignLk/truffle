@@ -1,0 +1,10 @@
+/* TC Booking - admin meta box styling */
+.tc-extra-row input {
+	padding: 4px 8px;
+}
+#tc-extras-rows {
+	margin-bottom: 8px;
+}
+.tc-extra-row .tc-remove-extra {
+	white-space: nowrap;
+}
