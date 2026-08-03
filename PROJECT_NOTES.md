@@ -199,6 +199,35 @@ touching postmeta relationships.
 - Guide photo upload has no custom UI - it's just the standard WordPress
   featured image on the Guide post type.
 
+## Updating the plugin on the live site
+
+The plugin self-updates from this GitHub repo (`IdealWebDesignLk/truffle`,
+now public) using the [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker)
+library, vendored at `includes/plugin-update-checker/`. It's wired up at the
+top of `tc-booking.php`.
+
+To ship an update to the live site:
+
+1. Bump the `Version` header in `tc-booking.php` and the `Stable tag` in
+   `readme.txt` (they should match).
+2. Commit and push to `main`.
+3. Tag the release, e.g. `git tag v0.2.0 && git push origin v0.2.0` -
+   optionally turn that tag into a proper GitHub Release for a changelog
+   entry site admins can see from the "View version details" link.
+
+Without a tag, the update checker falls back to watching the latest commit
+on `main` directly (that's what it's doing right now, since no tags exist
+yet) - it'll switch to preferring tags/releases automatically the moment
+one exists, per the library's documented behavior. Prefer always tagging
+releases going forward so `wp-admin -> Updates` shows a real version number
+and changelog instead of just "there's a newer commit."
+
+No GitHub token is configured or needed - the repo is public, so the
+update checker hits the GitHub API unauthenticated (rate-limited to 60
+requests/hour, well above what a single site's periodic update check
+needs). If the repo is ever made private again, `setAuthentication()` will
+need to be added with a personal access token.
+
 ## Setup
 
 See readme.txt - it has the step-by-step for locations/services/guides and

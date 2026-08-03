@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,12 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability.
 
 == Changelog ==
+
+= 0.2.0 =
+* Added GitHub-based update checker so the plugin can be updated from
+  wp-admin -> Updates like a wordpress.org plugin, pulling releases from
+  the IdealWebDesignLk/truffle GitHub repo. See PROJECT_NOTES.md for the
+  release process.
 
 = 0.1.0 =
 * Initial build: CPTs, admin panel, availability engine, REST API, WooCommerce integration, guide self-service, admin cancel/reschedule, email notifications.

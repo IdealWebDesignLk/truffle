@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Uses Amelia (Elite REST API) as the scheduling backend where configured, with a fully custom front-end and admin layer for locations, services, guides, and WooCommerce checkout.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.1.0' );
+define( 'TC_BOOKING_VERSION', '0.2.0' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );
@@ -41,6 +41,21 @@ spl_autoload_register(
 		}
 	}
 );
+
+/**
+ * GitHub-based update checker so the plugin shows up in wp-admin -> Updates
+ * whenever a new release is tagged on GitHub. See PROJECT_NOTES.md for the
+ * release process.
+ */
+require_once TC_BOOKING_PATH . 'includes/plugin-update-checker/plugin-update-checker.php';
+
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+
+PucFactory::buildUpdateChecker(
+	'https://github.com/IdealWebDesignLk/truffle/',
+	TC_BOOKING_FILE,
+	'tc-booking'
+)->setBranch( 'main' );
 
 /**
  * Core bootstrap. Hooked on plugins_loaded so WooCommerce (if active) is available.
