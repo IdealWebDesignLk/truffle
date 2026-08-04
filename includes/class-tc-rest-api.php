@@ -133,6 +133,25 @@ class TC_Rest_Api {
 				),
 			)
 		);
+
+		// --- Admin: edit a guide's calendar on their behalf ------------
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/admin/guides/(?P<id>\d+)/availability',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( __CLASS__, 'admin_get_guide_availability' ),
+					'permission_callback' => array( __CLASS__, 'require_manage_bookings' ),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( __CLASS__, 'admin_set_guide_availability' ),
+					'permission_callback' => array( __CLASS__, 'require_manage_bookings' ),
+				),
+			)
+		);
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -488,30 +507,14 @@ class TC_Rest_Api {
 	/* ------------------------------------------------------------------ */
 
 	public static function guide_get_availability( WP_REST_Request $request ) {
-		global $wpdb;
 		$guide = self::get_guide_post_for_current_user();
 		$start = self::sanitize_date( $request->get_param( 'start' ) ) ?: gmdate( 'Y-m-d' );
 		$end   = self::sanitize_date( $request->get_param( 'end' ) ) ?: gmdate( 'Y-m-d', strtotime( '+90 days' ) );
 
-		$table = $wpdb->prefix . 'tc_guide_availability';
-		$rows  = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT availability_date, status, note FROM {$table} WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
-				$guide->ID,
-				$start,
-				$end
-			)
-		);
-
-		$data = array();
-		foreach ( $rows as $row ) {
-			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
-		}
-		return rest_ensure_response( $data );
+		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
 	}
 
 	public static function guide_set_availability( WP_REST_Request $request ) {
-		global $wpdb;
 		$guide  = self::get_guide_post_for_current_user();
 		$params = $request->get_json_params();
 
@@ -523,6 +526,84 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
+		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
+
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Admin: edit a guide's calendar on their behalf                       */
+	/* ------------------------------------------------------------------ */
+
+	public static function admin_get_guide_availability( WP_REST_Request $request ) {
+		$guide = self::get_guide_post_for_admin_request( $request );
+		if ( is_wp_error( $guide ) ) {
+			return $guide;
+		}
+
+		$start = self::sanitize_date( $request->get_param( 'start' ) ) ?: gmdate( 'Y-m-d' );
+		$end   = self::sanitize_date( $request->get_param( 'end' ) ) ?: gmdate( 'Y-m-d', strtotime( '+90 days' ) );
+
+		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
+	}
+
+	public static function admin_set_guide_availability( WP_REST_Request $request ) {
+		$guide = self::get_guide_post_for_admin_request( $request );
+		if ( is_wp_error( $guide ) ) {
+			return $guide;
+		}
+
+		$params = $request->get_json_params();
+		$date   = self::sanitize_date( $params['date'] ?? '' );
+		$status = isset( $params['status'] ) && in_array( $params['status'], array( 'blocked', 'available' ), true ) ? $params['status'] : '';
+		$note   = isset( $params['note'] ) ? sanitize_text_field( $params['note'] ) : null;
+
+		if ( ! $date || ! $status ) {
+			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
+		}
+
+		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
+
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	private static function get_guide_post_for_admin_request( WP_REST_Request $request ) {
+		$guide_id = absint( $request->get_param( 'id' ) );
+		$guide    = get_post( $guide_id );
+		if ( ! $guide || TC_CPT::GUIDE !== $guide->post_type ) {
+			return new WP_Error( 'tc_not_found', __( 'Guide not found.', 'tc-booking' ), array( 'status' => 404 ) );
+		}
+		return $guide;
+	}
+
+	/**
+	 * Shared read/write helpers for the wp_tc_guide_availability table, used
+	 * by both the guide's own self-service endpoints and the admin endpoints
+	 * that edit a guide's calendar on their behalf - same data, same rules,
+	 * just a different permission check and a guide_id supplied explicitly
+	 * instead of resolved from the current user.
+	 */
+	private static function fetch_guide_availability( $guide_id, $start, $end ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'tc_guide_availability';
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT availability_date, status, note FROM {$table} WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
+				$guide_id,
+				$start,
+				$end
+			)
+		);
+
+		$data = array();
+		foreach ( $rows as $row ) {
+			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
+		}
+		return $data;
+	}
+
+	private static function upsert_guide_availability( $guide_id, $date, $status, $note ) {
+		global $wpdb;
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$now   = current_time( 'mysql' );
 
@@ -531,7 +612,7 @@ class TC_Rest_Api {
 				"INSERT INTO {$table} (guide_id, availability_date, status, note, created_at, updated_at)
 				 VALUES (%d, %s, %s, %s, %s, %s)
 				 ON DUPLICATE KEY UPDATE status = %s, note = %s, updated_at = %s",
-				$guide->ID,
+				$guide_id,
 				$date,
 				$status,
 				$note,
@@ -542,8 +623,6 @@ class TC_Rest_Api {
 				$now
 			)
 		);
-
-		return rest_ensure_response( array( 'success' => true ) );
 	}
 
 	/* ------------------------------------------------------------------ */

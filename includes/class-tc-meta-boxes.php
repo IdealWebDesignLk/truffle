@@ -20,12 +20,28 @@ class TC_Meta_Boxes {
 	}
 
 	public static function enqueue( $hook ) {
-		global $post_type;
+		global $post_type, $post;
 		if ( ! in_array( $post_type, array( TC_CPT::SERVICE, TC_CPT::GUIDE ), true ) ) {
 			return;
 		}
 		wp_enqueue_style( 'tc-admin', TC_BOOKING_URL . 'admin/css/admin.css', array(), TC_BOOKING_VERSION );
 		wp_enqueue_script( 'tc-admin', TC_BOOKING_URL . 'admin/js/admin.js', array( 'jquery' ), TC_BOOKING_VERSION, true );
+
+		// Availability calendar only makes sense once the guide has an ID to
+		// attach it to - 'auto-draft' is the unsaved "Add New Guide" screen.
+		if ( TC_CPT::GUIDE === $post_type && $post && 'auto-draft' !== $post->post_status ) {
+			wp_enqueue_style( 'tc-guide-availability', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
+			wp_enqueue_script( 'tc-guide-availability', TC_BOOKING_URL . 'admin/js/guide-availability.js', array(), TC_BOOKING_VERSION, true );
+			wp_localize_script(
+				'tc-guide-availability',
+				'tcGuideAvailabilityAdmin',
+				array(
+					'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
+					'nonce'    => wp_create_nonce( 'wp_rest' ),
+					'guideId'  => $post->ID,
+				)
+			);
+		}
 	}
 
 	public static function register() {
@@ -33,6 +49,7 @@ class TC_Meta_Boxes {
 		add_meta_box( 'tc_service_details', __( 'Service Details', 'tc-booking' ), array( __CLASS__, 'render_service' ), TC_CPT::SERVICE, 'normal', 'high' );
 		add_meta_box( 'tc_service_extras', __( 'Extras', 'tc-booking' ), array( __CLASS__, 'render_service_extras' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_guide_details', __( 'Guide Details', 'tc-booking' ), array( __CLASS__, 'render_guide' ), TC_CPT::GUIDE, 'normal', 'high' );
+		add_meta_box( 'tc_guide_availability', __( 'Availability Calendar', 'tc-booking' ), array( __CLASS__, 'render_guide_availability' ), TC_CPT::GUIDE, 'normal', 'default' );
 		add_meta_box( 'tc_booking_details', __( 'Booking Details', 'tc-booking' ), array( __CLASS__, 'render_booking' ), TC_CPT::BOOKING, 'normal', 'high' );
 	}
 
@@ -159,15 +176,19 @@ class TC_Meta_Boxes {
 	}
 
 	private static function render_extra_row( $index, $extra ) {
-		$label = isset( $extra['label'] ) ? $extra['label'] : '';
-		$price = isset( $extra['price'] ) ? $extra['price'] : '';
-		$max   = isset( $extra['max'] ) ? $extra['max'] : 1;
+		$label       = isset( $extra['label'] ) ? $extra['label'] : '';
+		$price       = isset( $extra['price'] ) ? $extra['price'] : '';
+		$max         = isset( $extra['max'] ) ? $extra['max'] : 1;
+		$description = isset( $extra['description'] ) ? $extra['description'] : '';
 		?>
-		<div class="tc-extra-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-			<input type="text" placeholder="<?php esc_attr_e( 'Label', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][label]" value="<?php echo esc_attr( $label ); ?>" style="flex:2;">
-			<input type="number" step="0.01" min="0" placeholder="<?php esc_attr_e( 'Price', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][price]" value="<?php echo esc_attr( $price ); ?>" style="flex:1;">
-			<input type="number" step="1" min="1" placeholder="<?php esc_attr_e( 'Max qty', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][max]" value="<?php echo esc_attr( $max ); ?>" style="flex:1;">
-			<button type="button" class="button-link-delete tc-remove-extra"><?php esc_html_e( 'Remove', 'tc-booking' ); ?></button>
+		<div class="tc-extra-row">
+			<div class="tc-extra-row-main">
+				<input type="text" placeholder="<?php esc_attr_e( 'Label', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][label]" value="<?php echo esc_attr( $label ); ?>" class="tc-extra-label">
+				<input type="number" step="0.01" min="0" placeholder="<?php esc_attr_e( 'Price', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][price]" value="<?php echo esc_attr( $price ); ?>" class="tc-extra-price">
+				<input type="number" step="1" min="1" placeholder="<?php esc_attr_e( 'Max qty', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][max]" value="<?php echo esc_attr( $max ); ?>" class="tc-extra-max">
+				<button type="button" class="button-link-delete tc-remove-extra"><?php esc_html_e( 'Remove', 'tc-booking' ); ?></button>
+			</div>
+			<textarea placeholder="<?php esc_attr_e( 'Description shown to customers explaining what this extra is (optional)', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][description]" class="tc-extra-description" rows="2"><?php echo esc_textarea( $description ); ?></textarea>
 		</div>
 		<?php
 	}
@@ -201,10 +222,11 @@ class TC_Meta_Boxes {
 					continue; // Skip blank rows left over from removed inputs.
 				}
 				$extras[] = array(
-					'key'   => sanitize_title( $label ),
-					'label' => $label,
-					'price' => isset( $row['price'] ) ? (float) $row['price'] : 0,
-					'max'   => isset( $row['max'] ) ? max( 1, (int) $row['max'] ) : 1,
+					'key'         => sanitize_title( $label ),
+					'label'       => $label,
+					'price'       => isset( $row['price'] ) ? (float) $row['price'] : 0,
+					'max'         => isset( $row['max'] ) ? max( 1, (int) $row['max'] ) : 1,
+					'description' => isset( $row['description'] ) ? sanitize_textarea_field( wp_unslash( $row['description'] ) ) : '',
 				);
 			}
 		}
@@ -262,6 +284,20 @@ class TC_Meta_Boxes {
 			</label>
 		<?php endforeach; ?>
 		<?php
+	}
+
+	/**
+	 * Lets an admin view/edit this guide's own-availability calendar
+	 * (wp_tc_guide_availability) without needing to log in as the guide -
+	 * same REST-backed calendar widget the guide dashboard shortcode uses,
+	 * pointed at the admin-only /admin/guides/{id}/availability routes.
+	 */
+	public static function render_guide_availability( $post ) {
+		if ( 'auto-draft' === $post->post_status ) {
+			echo '<p>' . esc_html__( 'Save this guide first, then come back here to manage their availability calendar.', 'tc-booking' ) . '</p>';
+			return;
+		}
+		echo '<div id="tc-guide-availability-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
 	}
 
 	public static function save_guide( $post_id ) {

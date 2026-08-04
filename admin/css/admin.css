@@ -1,6 +1,28 @@
 /* TC Booking - admin meta box styling */
+.tc-extra-row {
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	padding: 10px;
+	margin-bottom: 10px;
+}
+.tc-extra-row-main {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 6px;
+}
 .tc-extra-row input {
 	padding: 4px 8px;
+}
+.tc-extra-label {
+	flex: 2;
+}
+.tc-extra-price,
+.tc-extra-max {
+	flex: 1;
+}
+.tc-extra-description {
+	width: 100%;
 }
 #tc-extras-rows {
 	margin-bottom: 8px;

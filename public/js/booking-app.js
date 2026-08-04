@@ -248,7 +248,8 @@
 			: service.extras.map( function ( e ) {
 				var qty = state.extraQty[ e.key ] || 0;
 				return '<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">' + escapeHtml( e.label ) + '</div>' +
-					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + e.max + '</div></div>' +
+					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + e.max + '</div>' +
+					( e.description ? '<div class="ed">' + escapeHtml( e.description ) + '</div>' : '' ) + '</div>' +
 					'<div class="tc-qty"><button data-extra="' + e.key + '" data-dir="-1"' + ( 0 === qty ? ' disabled' : '' ) + '>\u2212</button>' +
 					'<span class="val">' + qty + '</span>' +
 					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= e.max ? ' disabled' : '' ) + '>+</button></div></div>';
