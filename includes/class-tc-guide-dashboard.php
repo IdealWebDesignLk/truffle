@@ -37,7 +37,7 @@ class TC_Guide_Dashboard {
 			)
 		);
 
-		return '<div id="tc-guide-dashboard-root">' . esc_html__( 'Loading your calendar\u2026', 'tc-booking' ) . '</div>';
+		return '<div id="tc-guide-dashboard-root">' . esc_html__( 'Loading your calendar…', 'tc-booking' ) . '</div>';
 	}
 
 	private static function login_prompt() {

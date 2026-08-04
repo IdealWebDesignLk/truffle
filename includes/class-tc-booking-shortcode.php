@@ -32,6 +32,6 @@ class TC_Booking_Shortcode {
 			)
 		);
 
-		return '<div id="tc-booking-root">' . esc_html__( 'Loading booking form\u2026', 'tc-booking' ) . '</div>';
+		return '<div id="tc-booking-root">' . esc_html__( 'Loading booking form…', 'tc-booking' ) . '</div>';
 	}
 }

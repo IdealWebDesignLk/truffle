@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,13 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability.
 
 == Changelog ==
+
+= 0.2.1 =
+* Fixed a bug where the guide edit screen's "None" dropdown option and
+  the booking widget / guide dashboard "Loading..." placeholders showed
+  raw backslash-u escape codes instead of an em dash / ellipsis -
+  those PHP strings used JS-style unicode escapes that PHP doesn't
+  interpret.
 
 = 0.2.0 =
 * Added GitHub-based update checker so the plugin can be updated from

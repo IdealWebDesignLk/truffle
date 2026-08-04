@@ -228,7 +228,7 @@ class TC_Meta_Boxes {
 		<p>
 			<label for="tc_user_id"><strong><?php esc_html_e( 'Linked WordPress user', 'tc-booking' ); ?></strong></label><br>
 			<select id="tc_user_id" name="tc_user_id">
-				<option value=""><?php esc_html_e( '\u2014 None \u2014', 'tc-booking' ); ?></option>
+				<option value=""><?php esc_html_e( '— None —', 'tc-booking' ); ?></option>
 				<?php foreach ( $users as $user ) : ?>
 					<option value="<?php echo esc_attr( $user->ID ); ?>" <?php selected( $user_id, $user->ID ); ?>>
 						<?php echo esc_html( $user->display_name . ' (' . $user->user_email . ')' ); ?>
