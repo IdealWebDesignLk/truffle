@@ -20,6 +20,9 @@
 	var API_ROOT = window.tcBooking.restRoot;
 	var NONCE    = window.tcBooking.nonce;
 
+	var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	var PHONE_RE = /^[0-9+()\-\s]{6,20}$/;
+
 	// Step list is dynamic, not fixed - "party" (group size) and "guests"
 	// (their contact details) only appear for services with "bring anyone
 	// with you" enabled (see GitHub issue #6), and "guests" only once the
@@ -41,6 +44,7 @@
 		partySize: 1,
 		guests: [],
 		info: { firstName: '', lastName: '', email: '', phone: '' },
+		fieldErrors: {},
 		submitting: false,
 		error: null,
 	};
@@ -65,7 +69,46 @@
 		return 'Step ' + ( idx + 1 ) + ' of ' + steps.length;
 	}
 
+	function validateDetails() {
+		var errors = {};
+		if ( ! state.info.firstName.trim() ) errors.firstName = 'First name is required.';
+		if ( ! state.info.lastName.trim() ) errors.lastName = 'Last name is required.';
+		if ( ! EMAIL_RE.test( state.info.email.trim() ) ) errors.email = 'Enter a valid email address.';
+		if ( ! PHONE_RE.test( state.info.phone.trim() ) ) errors.phone = 'Enter a valid phone number.';
+		return errors;
+	}
+
+	function validateGuests() {
+		var errors = {};
+		var count  = Math.max( 0, state.partySize - 1 );
+		for ( var i = 0; i < count; i++ ) {
+			var g = state.guests[ i ] || {};
+			if ( ! ( g.name || '' ).trim() ) errors[ 'guest-' + i + '-name' ] = 'Name is required.';
+			if ( ! EMAIL_RE.test( ( g.email || '' ).trim() ) ) errors[ 'guest-' + i + '-email' ] = 'Enter a valid email address.';
+			if ( ( g.phone || '' ).trim() && ! PHONE_RE.test( g.phone.trim() ) ) errors[ 'guest-' + i + '-phone' ] = 'Enter a valid phone number.';
+		}
+		return errors;
+	}
+
+	// Required-field gating for GitHub issues #8/#9 - required fields must be
+	// filled (and email/phone must look valid, #7/#10) before moving on.
+	function getStepErrors( key ) {
+		if ( 'details' === key ) return validateDetails();
+		if ( 'guests' === key ) return validateGuests();
+		return {};
+	}
+
 	function goNext() {
+		var errors     = getStepErrors( state.step );
+		var errorCount = Object.keys( errors ).length;
+		if ( errorCount ) {
+			state.fieldErrors = errors;
+			state.error = errorCount > 1 ? 'Please fix the highlighted fields before continuing.' : 'Please fix the highlighted field before continuing.';
+			render();
+			return;
+		}
+		state.fieldErrors = {};
+		state.error        = null;
 		var steps = getActiveSteps();
 		var idx   = steps.indexOf( state.step );
 		if ( idx > -1 && idx < steps.length - 1 ) {
@@ -74,6 +117,8 @@
 	}
 
 	function goBack() {
+		state.fieldErrors = {};
+		state.error        = null;
 		var steps = getActiveSteps();
 		var idx   = steps.indexOf( state.step );
 		if ( idx > 0 ) {
@@ -170,7 +215,15 @@
 		return r;
 	}
 	function isoDate( d ) {
-		return d.toISOString().slice( 0, 10 );
+		// Not toISOString() - that converts to UTC, which silently shifts the
+		// date back a day for any browser ahead of UTC (e.g. the Netherlands,
+		// this site's own market, at UTC+1/+2). Build the string from the
+		// same local date parts toLocaleDateString() already displays, so the
+		// value sent to the server always matches what's on screen.
+		var y = d.getFullYear();
+		var m = String( d.getMonth() + 1 ).padStart( 2, '0' );
+		var day = String( d.getDate() ).padStart( 2, '0' );
+		return y + '-' + m + '-' + day;
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -305,9 +358,12 @@
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
-	function guestField( idx, key, label, value, placeholder ) {
-		return '<div class="tc-field"><label>' + label + '</label>' +
-			'<input data-guest-index="' + idx + '" data-guest-field="' + key + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '"></div>';
+	function guestField( idx, key, label, value, placeholder, type ) {
+		var errKey = 'guest-' + idx + '-' + key;
+		var err    = state.fieldErrors[ errKey ];
+		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + label + '</label>' +
+			'<input type="' + ( type || 'text' ) + '" data-guest-index="' + idx + '" data-guest-field="' + key + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '">' +
+			( err ? '<div class="tc-field-error">' + escapeHtml( err ) + '</div>' : '' ) + '</div>';
 	}
 
 	function renderGuests() {
@@ -318,8 +374,8 @@
 			blocks += '<div class="tc-guest-block">' +
 				'<p class="tc-guest-heading">Guest ' + ( i + 1 ) + '</p>' +
 				guestField( i, 'name', 'Full name', g.name, 'Guest name' ) +
-				guestField( i, 'email', 'Email', g.email, 'guest@example.com' ) +
-				guestField( i, 'phone', 'Phone (optional)', g.phone, '+31 6 12345678' ) +
+				guestField( i, 'email', 'Email', g.email, 'guest@example.com', 'email' ) +
+				guestField( i, 'phone', 'Phone (optional)', g.phone, '+31 6 12345678', 'tel' ) +
 				'</div>';
 		}
 
@@ -353,12 +409,15 @@
 		return '<p class="tc-eyebrow">' + stepLabel( 'details' ) + '</p><h2 class="tc-title">Your details</h2>' +
 			field( 'firstName', 'First name', i.firstName, 'Jane' ) +
 			field( 'lastName', 'Last name', i.lastName, 'Doe' ) +
-			field( 'email', 'Email', i.email, 'jane@example.com' ) +
-			field( 'phone', 'Phone', i.phone, '+31 6 12345678' ) +
+			field( 'email', 'Email', i.email, 'jane@example.com', 'email' ) +
+			field( 'phone', 'Phone', i.phone, '+31 6 12345678', 'tel' ) +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
-	function field( id, label, value, placeholder ) {
-		return '<div class="tc-field"><label>' + label + '</label><input id="tc-' + id + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '"></div>';
+	function field( id, label, value, placeholder, type ) {
+		var err = state.fieldErrors[ id ];
+		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + label + '</label>' +
+			'<input type="' + ( type || 'text' ) + '" id="tc-' + id + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '">' +
+			( err ? '<div class="tc-field-error">' + escapeHtml( err ) + '</div>' : '' ) + '</div>';
 	}
 
 	function renderReview() {
@@ -452,14 +511,24 @@
 			el.oninput = function () {
 				var idx = parseInt( el.dataset.guestIndex, 10 );
 				var key = el.dataset.guestField;
+				if ( 'phone' === key ) {
+					el.value = sanitizePhoneInput( el.value );
+				}
 				if ( ! state.guests[ idx ] ) state.guests[ idx ] = { name: '', email: '', phone: '' };
 				state.guests[ idx ][ key ] = el.value;
+				delete state.fieldErrors[ 'guest-' + idx + '-' + key ];
 			};
 		} );
 
 		[ 'firstName', 'lastName', 'email', 'phone' ].forEach( function ( f ) {
 			var el = document.getElementById( 'tc-' + f );
-			if ( el ) el.oninput = function () { state.info[ f ] = el.value; };
+			if ( el ) el.oninput = function () {
+				if ( 'phone' === f ) {
+					el.value = sanitizePhoneInput( el.value );
+				}
+				state.info[ f ] = el.value;
+				delete state.fieldErrors[ f ];
+			};
 		} );
 
 		var checkout = document.getElementById( 'tc-checkout' );
@@ -561,6 +630,12 @@
 	}
 	function escapeAttr( str ) {
 		return escapeHtml( str ).replace( /"/g, '&quot;' );
+	}
+	// GitHub issue #7 - strips anything that isn't a digit, space, or one of
+	// +()- as the customer types, so letters simply can't end up in a phone
+	// field in the first place.
+	function sanitizePhoneInput( v ) {
+		return v.replace( /[^0-9+()\-\s]/g, '' );
 	}
 
 	/* ------------------------------------------------------------------ */

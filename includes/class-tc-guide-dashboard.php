@@ -37,7 +37,15 @@ class TC_Guide_Dashboard {
 			)
 		);
 
-		return '<div id="tc-guide-dashboard-root">' . esc_html__( 'Loading your calendar…', 'tc-booking' ) . '</div>';
+		// Skeleton placeholder instead of plain "Loading…" text, to avoid
+		// layout shift when guide-dashboard.js replaces this - see GitHub
+		// issue #13 (same fix as the booking widget shortcode).
+		return '<div id="tc-guide-dashboard-root">' .
+			'<div class="tc-card tc-skeleton" aria-busy="true" aria-label="' . esc_attr__( 'Loading your calendar…', 'tc-booking' ) . '">' .
+			'<div class="tc-skel-line tc-skel-title"></div>' .
+			'<div class="tc-skel-line tc-skel-sub"></div>' .
+			'<div class="tc-skel-block"></div>' .
+			'</div></div>';
 	}
 
 	private static function login_prompt() {

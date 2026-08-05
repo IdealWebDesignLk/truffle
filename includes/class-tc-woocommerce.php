@@ -58,14 +58,15 @@ class TC_Woocommerce {
 			)
 			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date );
 
-		$order->add_fee( $fee_label, $service['price'] * $party_multiplier );
+		self::add_fee_line( $order, $fee_label, $service['price'] * $party_multiplier );
 
 		if ( is_array( $extras ) ) {
 			foreach ( $extras as $extra ) {
 				if ( $extra['qty'] <= 0 ) {
 					continue;
 				}
-				$order->add_fee(
+				self::add_fee_line(
+					$order,
 					sprintf( '%s x%d', $extra['label'], $extra['qty'] ),
 					$extra['price'] * $extra['qty']
 				);
@@ -111,6 +112,36 @@ class TC_Woocommerce {
 		update_post_meta( $booking_id, '_tc_wc_order_id', $order->get_id() );
 
 		return $order;
+	}
+
+	/**
+	 * Adds a fee line item to an order.
+	 *
+	 * `WC_Order::add_fee( $name, $amount )` is NOT a real WooCommerce method -
+	 * it was deprecated in WC 2.7 (2016) in favor of building a
+	 * WC_Order_Item_Fee and adding it via add_item(), and even the old
+	 * deprecated version took a single fee object, not (name, amount)
+	 * arguments. Calling the old two-argument form (as this file used to)
+	 * fatals with "Call to undefined method" against any real WooCommerce
+	 * install - this plugin was only ever exercised against a hand-written
+	 * stub that (incorrectly) mirrored that call shape. This is what GitHub
+	 * issue #11 ("checkout issue") turned out to be: the order got created
+	 * by wc_create_order() itself (which saves immediately), but every fee
+	 * line failed to attach, leaving a real $0 order that WooCommerce then
+	 * correctly refuses to take payment for.
+	 *
+	 * Tax is explicitly set to 'none' - the booking's own price snapshot
+	 * (service price + extras, already final) is the single source of
+	 * truth per this class's file header; WooCommerce isn't calculating or
+	 * adding tax on top of it.
+	 */
+	private static function add_fee_line( WC_Order $order, $name, $amount ) {
+		$fee = new WC_Order_Item_Fee();
+		$fee->set_name( $name );
+		$fee->set_amount( $amount );
+		$fee->set_total( $amount );
+		$fee->set_tax_status( 'none' );
+		$order->add_item( $fee );
 	}
 
 	public static function cancel_order( $order_id ) {

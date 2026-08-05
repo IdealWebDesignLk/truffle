@@ -192,6 +192,27 @@ What was verified end-to-end this way:
   correctly affects the public grid; a non-guide user correctly gets a 403
   when trying to hit the guide-only endpoint (permission boundary holds)
 
+**A second real bug, found in production rather than by this testing**
+(GitHub issue #11, fixed in 0.5.0): `class-tc-woocommerce.php` was calling
+`$order->add_fee( $name, $amount )`, which is not a real WooCommerce
+method - it was deprecated in WC 2.7 (2016) in favor of building a
+`WC_Order_Item_Fee` and adding it via `add_item()`, and even that old
+deprecated version took a single fee object, not (name, amount)
+arguments. The dev-environment stub described above was written to
+match this plugin's own (incorrect) call shape rather than real
+WooCommerce's actual API, so it "passed" every fee-related test above
+despite the method never having been valid against a real install. The
+practical effect on the live site: `wc_create_order()` still creates and
+saves a real order (it does that internally before this plugin's code
+ever runs), but every fee line then failed to attach, leaving every
+order at a genuine $0 total - which WooCommerce correctly refuses to
+take payment for. This is exactly the class of bug the paragraph above
+warns about: a stub that mirrors the code being tested, rather than the
+real system, will pass tests while hiding a real breakage. Worth
+treating "no real WooCommerce available to test against" as a standing
+risk for any future WooCommerce-integration change here, not just a
+one-time caveat.
+
 **One real bug was found and fixed by this testing**, not caught by syntax
 checking or code review: `_tc_location_ids` / `_tc_service_ids` were
 originally stored as a single serialized array per guide, with lookups
@@ -209,6 +230,21 @@ touching postmeta relationships.
 
 ## What's NOT done yet
 
+- **GitHub issue #14 ("book a 1-day event, the next day also disappears
+  from the calendar") is only partially addressed as of 0.5.0.** Fixed:
+  `isoDate()` in `booking-app.js`/`guide-dashboard.js`/`guide-availability.js`
+  used `toISOString()`, which converts to UTC and silently shifts the
+  date string back a day for any browser ahead of UTC (Netherlands,
+  this site's own market, is UTC+1/+2) - now built from local date parts
+  instead. However, tracing `TC_Availability::guide_available_on()` by
+  hand for a plain 1-day service didn't turn up a matching off-by-one in
+  the day-span math itself (span correctly collapses to a single day
+  when `duration_days` is 1). If the symptom still reproduces after the
+  timezone fix, get exact repro details before changing this function
+  further - which service/duration, which date was clicked, and exactly
+  which date shows blocked afterward - since this is the piece of the
+  build most explicitly flagged as bug-prone and "should never be
+  forked" without being sure.
 - WPML wiring - the CPTs/fields exist but aren't yet registered with WPML's
   translation config on the live site.
 - Reschedule admin UI is a plain `prompt()` for the new date (see

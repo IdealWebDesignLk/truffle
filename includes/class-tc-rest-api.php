@@ -344,8 +344,32 @@ class TC_Rest_Api {
 		$phone       = isset( $params['phone'] ) ? sanitize_text_field( $params['phone'] ) : '';
 		$extras_in   = isset( $params['extras'] ) && is_array( $params['extras'] ) ? $params['extras'] : array();
 
-		if ( ! $service_id || ! $location_id || ! $date || ! $email || ! $first_name ) {
-			return new WP_Error( 'tc_missing_fields', __( 'Missing required booking fields.', 'tc-booking' ), array( 'status' => 400 ) );
+		$missing = array();
+		if ( ! $service_id ) {
+			$missing[] = __( 'service', 'tc-booking' );
+		}
+		if ( ! $location_id ) {
+			$missing[] = __( 'location', 'tc-booking' );
+		}
+		if ( ! $date ) {
+			$missing[] = __( 'date', 'tc-booking' );
+		}
+		if ( ! $first_name ) {
+			$missing[] = __( 'first name', 'tc-booking' );
+		}
+		if ( ! $email ) {
+			$missing[] = __( 'email', 'tc-booking' );
+		}
+		if ( $missing ) {
+			return new WP_Error(
+				'tc_missing_fields',
+				sprintf(
+					/* translators: %s: comma-separated list of missing field names */
+					__( 'Missing required booking fields: %s.', 'tc-booking' ),
+					implode( ', ', $missing )
+				),
+				array( 'status' => 400 )
+			);
 		}
 		if ( ! is_email( $email ) ) {
 			return new WP_Error( 'tc_invalid_email', __( 'Invalid email address.', 'tc-booking' ), array( 'status' => 400 ) );

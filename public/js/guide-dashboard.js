@@ -46,7 +46,14 @@
 	}
 
 	function isoDate( d ) {
-		return d.toISOString().slice( 0, 10 );
+		// Not toISOString() - that converts to UTC, which silently shifts the
+		// date back a day for any browser ahead of UTC (e.g. the Netherlands,
+		// this site's own market, at UTC+1/+2). Build the string from local
+		// date parts so what's saved always matches the day actually clicked.
+		var y = d.getFullYear();
+		var m = String( d.getMonth() + 1 ).padStart( 2, '0' );
+		var day = String( d.getDate() ).padStart( 2, '0' );
+		return y + '-' + m + '-' + day;
 	}
 
 	function monthBounds( offset ) {

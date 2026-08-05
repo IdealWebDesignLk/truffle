@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,29 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.5.0 =
+* Fixed checkout being unable to take payment on every booking - the fee
+  line items were being added via a WooCommerce method that doesn't
+  actually exist (`WC_Order::add_fee()`), silently leaving every order
+  at a real $0 total that WooCommerce correctly refused to charge for.
+  Now builds real WC_Order_Item_Fee line items. Resolves GitHub issue
+  #11.
+* Fixed a date-shift bug where booking widget/guide calendar dates were
+  computed via UTC conversion, silently shifting the stored date back a
+  day for any browser in a timezone ahead of UTC (e.g. the Netherlands).
+  Related to GitHub issue #14 - see PROJECT_NOTES.md for what's still
+  unconfirmed here.
+* The booking widget now requires and validates "Your details" and (if
+  bringing a group) each guest's details before continuing - name/email
+  required, phone restricted to phone-like characters as you type and
+  validated, email format validated. Resolves GitHub issues #7, #8, #9,
+  #10.
+* The "missing booking fields" error now names the specific missing
+  fields instead of a generic message. Resolves GitHub issue #12.
+* Loading screens (booking widget, guide dashboard) now show a skeleton
+  placeholder shaped like the real first screen instead of plain text,
+  eliminating the layout shift when it loads. Resolves GitHub issue #13.
 
 = 0.4.0 =
 * New "Bring anyone with you" feature: a checkbox on a Service enables a
