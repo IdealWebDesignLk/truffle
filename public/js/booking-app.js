@@ -20,12 +20,16 @@
 	var API_ROOT = window.tcBooking.restRoot;
 	var NONCE    = window.tcBooking.nonce;
 
-	var STEPS = [ 'Location', 'Availability', 'Extras', 'Your details', 'Review' ];
-
+	// Step list is dynamic, not fixed - "party" (group size) and "guests"
+	// (their contact details) only appear for services with "bring anyone
+	// with you" enabled (see GitHub issue #6), and "guests" only once the
+	// customer has actually said they're bringing someone. getActiveSteps()
+	// below computes the real sequence for the current state.
 	var state = {
-		step: 0,
+		step: 'location',
 		locations: [],
 		services: [],
+		guidesByLocation: {},
 		locationId: null,
 		guide: null,
 		serviceId: null,
@@ -34,10 +38,48 @@
 		grid: [],
 		gridLoading: false,
 		extraQty: {},
+		partySize: 1,
+		guests: [],
 		info: { firstName: '', lastName: '', email: '', phone: '' },
 		submitting: false,
 		error: null,
 	};
+
+	function getActiveSteps() {
+		var svc   = getService( state.serviceId );
+		var steps = [ 'location', 'availability' ];
+		if ( svc && svc.allow_party ) {
+			steps.push( 'party' );
+		}
+		steps.push( 'extras' );
+		if ( svc && svc.allow_party && state.partySize > 1 ) {
+			steps.push( 'guests' );
+		}
+		steps.push( 'details', 'review' );
+		return steps;
+	}
+
+	function stepLabel( key ) {
+		var steps = getActiveSteps();
+		var idx   = steps.indexOf( key );
+		return 'Step ' + ( idx + 1 ) + ' of ' + steps.length;
+	}
+
+	function goNext() {
+		var steps = getActiveSteps();
+		var idx   = steps.indexOf( state.step );
+		if ( idx > -1 && idx < steps.length - 1 ) {
+			setStep( steps[ idx + 1 ] );
+		}
+	}
+
+	function goBack() {
+		var steps = getActiveSteps();
+		var idx   = steps.indexOf( state.step );
+		if ( idx > 0 ) {
+			setStep( steps[ idx - 1 ] );
+		}
+	}
 
 	/* ------------------------------------------------------------------ */
 	/* API helpers                                                          */
@@ -114,9 +156,13 @@
 		} );
 		return total;
 	}
+	function partyMultiplier() {
+		var service = getService( state.serviceId );
+		return ( service && service.allow_party ) ? Math.max( 1, state.partySize ) : 1;
+	}
 	function grandTotal() {
 		var service = getService( state.serviceId );
-		return ( service ? service.price : 0 ) + extrasTotal();
+		return ( service ? service.price * partyMultiplier() : 0 ) + extrasTotal();
 	}
 	function addDays( d, n ) {
 		var r = new Date( d );
@@ -131,27 +177,31 @@
 	/* Render                                                               */
 	/* ------------------------------------------------------------------ */
 
-	function setStep( n ) {
-		state.step = n;
+	function setStep( key ) {
+		state.step = key;
 		render();
-		if ( 1 === n ) {
+		if ( 'availability' === key ) {
 			loadGrid();
 		}
 		window.scrollTo( { top: root.offsetTop - 20, behavior: 'smooth' } );
 	}
 
 	function render() {
-		var progress = STEPS.map( function ( _, i ) {
-			return '<div class="seg' + ( i <= state.step ? ' done' : '' ) + '"></div>';
+		var activeSteps = getActiveSteps();
+		var currentIdx  = activeSteps.indexOf( state.step );
+		var progress    = activeSteps.map( function ( _, i ) {
+			return '<div class="seg' + ( i <= currentIdx ? ' done' : '' ) + '"></div>';
 		} ).join( '' );
 
 		var body = '';
 		switch ( state.step ) {
-			case 0: body = renderLocation(); break;
-			case 1: body = renderGrid(); break;
-			case 2: body = renderExtras(); break;
-			case 3: body = renderInfo(); break;
-			case 4: body = renderReview(); break;
+			case 'location': body = renderLocation(); break;
+			case 'availability': body = renderGrid(); break;
+			case 'party': body = renderParty(); break;
+			case 'extras': body = renderExtras(); break;
+			case 'guests': body = renderGuests(); break;
+			case 'details': body = renderInfo(); break;
+			case 'review': body = renderReview(); break;
 		}
 
 		root.innerHTML = '<div class="tc-progress">' + progress + '</div><div class="tc-card">' +
@@ -187,7 +237,7 @@
 				'</div>';
 		}
 
-		return '<p class="tc-eyebrow">Step 1 of ' + STEPS.length + '</p>' +
+		return '<p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
 			'<h2 class="tc-title">Pick a location</h2>' +
 			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p>' +
 			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="0 0 320 400" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
@@ -227,7 +277,7 @@
 			return '<tr><td>' + escapeHtml( svc.name ) + '<small>' + svc.duration_days + ( svc.duration_days > 1 ? ' days' : ' day' ) + '</small></td>' + cells + '</tr>';
 		} ).join( '' );
 
-		return '<p class="tc-eyebrow">Step 2 of ' + STEPS.length + '</p>' +
+		return '<p class="tc-eyebrow">' + stepLabel( 'availability' ) + '</p>' +
 			'<h2 class="tc-title">Availability at ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
 			'<p class="tc-sub">Pick a ceremony and date together \u2014 tap any open cell.</p>' +
 			'<div class="tc-grid-nav"><button id="tc-prev-week"' + ( 0 === state.weekOffset ? ' disabled' : '' ) + '>\u2190 earlier</button>' +
@@ -238,6 +288,45 @@
 			'<span><span class="tc-swatch" style="background:var(--limited)"></span>Almost full</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Not available</span></div>' +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
+	}
+
+	function renderParty() {
+		var service = getService( state.serviceId );
+		if ( ! service ) return '<p>Please go back and pick a date.</p>';
+		var max = Math.max( 1, service.max_capacity );
+
+		return '<p class="tc-eyebrow">' + stepLabel( 'party' ) + '</p><h2 class="tc-title">How many people are you bringing?</h2>' +
+			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony. The base price is charged per person.</p>' +
+			'<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">Total in your group</div>' +
+			'<div class="ep">' + fmt( service.price ) + ' per person</div></div>' +
+			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
+			'<span class="val">' + state.partySize + '</span>' +
+			'<button type="button" id="tc-party-plus"' + ( state.partySize >= max ? ' disabled' : '' ) + '>+</button></div></div>' +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+	}
+
+	function guestField( idx, key, label, value, placeholder ) {
+		return '<div class="tc-field"><label>' + label + '</label>' +
+			'<input data-guest-index="' + idx + '" data-guest-field="' + key + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '"></div>';
+	}
+
+	function renderGuests() {
+		var count  = Math.max( 0, state.partySize - 1 );
+		var blocks = '';
+		for ( var i = 0; i < count; i++ ) {
+			var g = state.guests[ i ] || { name: '', email: '', phone: '' };
+			blocks += '<div class="tc-guest-block">' +
+				'<p class="tc-guest-heading">Guest ' + ( i + 1 ) + '</p>' +
+				guestField( i, 'name', 'Full name', g.name, 'Guest name' ) +
+				guestField( i, 'email', 'Email', g.email, 'guest@example.com' ) +
+				guestField( i, 'phone', 'Phone (optional)', g.phone, '+31 6 12345678' ) +
+				'</div>';
+		}
+
+		return '<p class="tc-eyebrow">' + stepLabel( 'guests' ) + '</p><h2 class="tc-title">Your group’s details</h2>' +
+			'<p class="tc-sub">We need contact details for everyone joining you, so we can reach them if needed.</p>' +
+			blocks +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	function renderExtras() {
@@ -255,13 +344,13 @@
 					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= e.max ? ' disabled' : '' ) + '>+</button></div></div>';
 			} ).join( '' );
 
-		return '<p class="tc-eyebrow">Step 3 of ' + STEPS.length + '</p><h2 class="tc-title">Extras &amp; quantity</h2>' + rows +
+		return '<p class="tc-eyebrow">' + stepLabel( 'extras' ) + '</p><h2 class="tc-title">Extras &amp; quantity</h2>' + rows +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	function renderInfo() {
 		var i = state.info;
-		return '<p class="tc-eyebrow">Step 4 of ' + STEPS.length + '</p><h2 class="tc-title">Your details</h2>' +
+		return '<p class="tc-eyebrow">' + stepLabel( 'details' ) + '</p><h2 class="tc-title">Your details</h2>' +
 			field( 'firstName', 'First name', i.firstName, 'Jane' ) +
 			field( 'lastName', 'Last name', i.lastName, 'Doe' ) +
 			field( 'email', 'Email', i.email, 'jane@example.com' ) +
@@ -283,12 +372,25 @@
 			return '<div class="tc-rline"><span class="l">' + escapeHtml( e.label ) + ' \u00d7 ' + qty + '</span><span>' + fmt( e.price * qty ) + '</span></div>';
 		} ).join( '' );
 
-		return '<p class="tc-eyebrow">Step 5 of ' + STEPS.length + '</p><h2 class="tc-title">Review your booking</h2>' +
+		var isParty     = service.allow_party && state.partySize > 1;
+		var basePriceLine = isParty
+			? '<div class="tc-rline"><span class="l">Base price \u00d7 ' + state.partySize + ' people</span><span>' + fmt( service.price * state.partySize ) + '</span></div>'
+			: '<div class="tc-rline"><span class="l">Base price</span><span>' + fmt( service.price ) + '</span></div>';
+
+		var guestLines = isParty
+			? state.guests.slice( 0, state.partySize - 1 ).map( function ( g, i ) {
+				return '<div class="tc-rline"><span class="l">Guest ' + ( i + 1 ) + '</span><span>' + escapeHtml( g.name || '\u2014' ) + '</span></div>';
+			} ).join( '' )
+			: '';
+
+		return '<p class="tc-eyebrow">' + stepLabel( 'review' ) + '</p><h2 class="tc-title">Review your booking</h2>' +
 			'<div class="tc-rline"><span class="l">Location</span><span>' + escapeHtml( loc.name ) + '</span></div>' +
 			( state.guide ? '<div class="tc-rline"><span class="l">Guide</span><span>' + escapeHtml( state.guide.name ) + '</span></div>' : '' ) +
 			'<div class="tc-rline"><span class="l">Ceremony</span><span>' + escapeHtml( service.name ) + '</span></div>' +
 			'<div class="tc-rline"><span class="l">Date</span><span>' + dateStr + '</span></div>' +
-			'<div class="tc-rline"><span class="l">Base price</span><span>' + fmt( service.price ) + '</span></div>' +
+			( isParty ? '<div class="tc-rline"><span class="l">Group size</span><span>' + state.partySize + '</span></div>' : '' ) +
+			guestLines +
+			basePriceLine +
 			extraLines +
 			'<div class="tc-rline total"><span class="l">Total</span><span class="r">' + fmt( grandTotal() ) + '</span></div>' +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button>' +
@@ -302,10 +404,10 @@
 
 	function attachHandlers() {
 		var back = document.getElementById( 'tc-back' );
-		if ( back ) back.onclick = function () { setStep( state.step - 1 ); };
+		if ( back ) back.onclick = goBack;
 
 		var next = document.getElementById( 'tc-next' );
-		if ( next ) next.onclick = function () { setStep( state.step + 1 ); };
+		if ( next ) next.onclick = goNext;
 
 		root.querySelectorAll( '[data-loc]' ).forEach( function ( el ) {
 			el.onclick = function () { selectLocation( parseInt( el.dataset.loc, 10 ) ); };
@@ -321,9 +423,16 @@
 				state.serviceId = parseInt( el.dataset.svc, 10 );
 				state.date      = el.dataset.date;
 				state.extraQty  = {};
-				setStep( 2 );
+				state.partySize = 1;
+				state.guests    = [];
+				goNext();
 			};
 		} );
+
+		var partyMinus = document.getElementById( 'tc-party-minus' );
+		if ( partyMinus ) partyMinus.onclick = function () { adjustPartySize( -1 ); };
+		var partyPlus = document.getElementById( 'tc-party-plus' );
+		if ( partyPlus ) partyPlus.onclick = function () { adjustPartySize( 1 ); };
 
 		root.querySelectorAll( '[data-extra]' ).forEach( function ( el ) {
 			el.onclick = function () {
@@ -339,6 +448,15 @@
 			};
 		} );
 
+		root.querySelectorAll( '[data-guest-field]' ).forEach( function ( el ) {
+			el.oninput = function () {
+				var idx = parseInt( el.dataset.guestIndex, 10 );
+				var key = el.dataset.guestField;
+				if ( ! state.guests[ idx ] ) state.guests[ idx ] = { name: '', email: '', phone: '' };
+				state.guests[ idx ][ key ] = el.value;
+			};
+		} );
+
 		[ 'firstName', 'lastName', 'email', 'phone' ].forEach( function ( f ) {
 			var el = document.getElementById( 'tc-' + f );
 			if ( el ) el.oninput = function () { state.info[ f ] = el.value; };
@@ -348,15 +466,23 @@
 		if ( checkout ) checkout.onclick = submitBooking;
 	}
 
+	function adjustPartySize( dir ) {
+		var service = getService( state.serviceId );
+		var max     = Math.max( 1, service.max_capacity );
+		var v       = Math.max( 1, Math.min( max, state.partySize + dir ) );
+		state.partySize = v;
+		state.guests.length = Math.max( 0, v - 1 ); // trim/grow to match, blanks fill in at render time
+		render();
+	}
+
 	function selectLocation( id ) {
 		state.locationId = id;
-		state.guide       = null;
-		state.error       = null;
+		state.error = null;
+		// Guide preview comes from the bulk /guides prefetch at init, not a
+		// fresh request per click - that per-click fetch was visibly slow
+		// (see GitHub issue #4).
+		state.guide = state.guidesByLocation[ id ] || null;
 		render();
-		apiGet( '/guide?location_id=' + id ).then( function ( guide ) {
-			state.guide = guide;
-			render();
-		} ).catch( function () { /* no guide assigned yet - leave preview blank */ } );
 	}
 
 	function loadGrid() {
@@ -410,6 +536,8 @@
 			email: state.info.email,
 			phone: state.info.phone,
 			extras: extras,
+			party_size: ( service && service.allow_party ) ? state.partySize : 1,
+			guests: ( service && service.allow_party ) ? state.guests.slice( 0, Math.max( 0, state.partySize - 1 ) ) : [],
 		} ).then( function ( result ) {
 			window.location.href = result.checkout_url;
 		} ).catch( function ( err ) {
@@ -439,9 +567,10 @@
 	/* Init                                                                 */
 	/* ------------------------------------------------------------------ */
 
-	Promise.all( [ apiGet( '/locations' ), apiGet( '/services' ) ] ).then( function ( results ) {
-		state.locations = results[ 0 ];
-		state.services  = results[ 1 ];
+	Promise.all( [ apiGet( '/locations' ), apiGet( '/services' ), apiGet( '/guides' ) ] ).then( function ( results ) {
+		state.locations        = results[ 0 ];
+		state.services         = results[ 1 ];
+		state.guidesByLocation = results[ 2 ];
 		render();
 	} ).catch( function ( err ) {
 		root.innerHTML = '<div class="tc-card"><p class="tc-error">Could not load the booking form: ' + escapeHtml( err.message ) + '</p></div>';

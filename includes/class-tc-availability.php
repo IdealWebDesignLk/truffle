@@ -253,6 +253,7 @@ class TC_Availability {
 			'start_time'     => get_post_meta( $service_id, '_tc_start_time', true ),
 			'min_capacity'   => (int) get_post_meta( $service_id, '_tc_min_capacity', true ) ?: 1,
 			'max_capacity'   => (int) get_post_meta( $service_id, '_tc_max_capacity', true ) ?: 1,
+			'allow_party'    => (bool) get_post_meta( $service_id, '_tc_allow_party', true ),
 			'extras'         => is_array( $extras ) ? $extras : array(),
 		);
 	}

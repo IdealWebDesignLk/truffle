@@ -114,6 +114,7 @@ class TC_Meta_Boxes {
 		$start_time    = get_post_meta( $post->ID, '_tc_start_time', true );
 		$min_capacity  = get_post_meta( $post->ID, '_tc_min_capacity', true );
 		$max_capacity  = get_post_meta( $post->ID, '_tc_max_capacity', true );
+		$allow_party   = get_post_meta( $post->ID, '_tc_allow_party', true );
 
 		if ( '' === $duration_days ) {
 			$duration_days = 1;
@@ -151,6 +152,16 @@ class TC_Meta_Boxes {
 			<tr>
 				<th><label for="tc_max_capacity"><?php esc_html_e( 'Max capacity', 'tc-booking' ); ?></label></th>
 				<td><input type="number" step="1" min="1" id="tc_max_capacity" name="tc_max_capacity" value="<?php echo esc_attr( $max_capacity ); ?>" class="small-text"></td>
+			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Bring anyone with you', 'tc-booking' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" id="tc_allow_party" name="tc_allow_party" value="1" <?php checked( '1', $allow_party ); ?>>
+						<?php esc_html_e( 'Let the customer bring extra people to this ceremony', 'tc-booking' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'Adds a group-size step to the booking flow (capped at Max capacity above, including the customer themself) and collects each extra person\'s name, email, and phone. The base price is charged per person.', 'tc-booking' ); ?></p>
+				</td>
 			</tr>
 		</table>
 		<?php
@@ -213,6 +224,8 @@ class TC_Meta_Boxes {
 				update_post_meta( $post_id, $meta_key, sanitize_text_field( wp_unslash( $_POST[ $post_key ] ) ) );
 			}
 		}
+
+		update_post_meta( $post_id, '_tc_allow_party', isset( $_POST['tc_allow_party'] ) ? '1' : '' );
 
 		$extras = array();
 		if ( isset( $_POST['tc_extras'] ) && is_array( $_POST['tc_extras'] ) ) {

@@ -59,6 +59,16 @@ class TC_Rest_Api {
 
 		register_rest_route(
 			self::NAMESPACE_,
+			'/guides',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'get_guides_by_location' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
 			'/availability',
 			array(
 				'methods'             => 'GET',
@@ -216,6 +226,7 @@ class TC_Rest_Api {
 				'start_time'    => $service['start_time'],
 				'min_capacity'  => $service['min_capacity'],
 				'max_capacity'  => $service['max_capacity'],
+				'allow_party'   => $service['allow_party'],
 				'extras'        => $service['extras'],
 			);
 		}
@@ -262,6 +273,41 @@ class TC_Rest_Api {
 				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
 			)
 		);
+	}
+
+	/**
+	 * Same "first guide covering this location" preview as get_guide_for_location()
+	 * (without a service_id filter), but for every location in one request -
+	 * lets the front-end preload every location's guide preview at initial
+	 * page load instead of firing a fresh request on every pin/row click,
+	 * which was visibly slow (see GitHub issue #4).
+	 */
+	public static function get_guides_by_location() {
+		$locations = get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'fields' => 'ids' ) );
+
+		$data = array();
+		foreach ( $locations as $location_id ) {
+			$guides = get_posts(
+				array(
+					'post_type'   => TC_CPT::GUIDE,
+					'numberposts' => 1,
+					'meta_query'  => array(
+						array( 'key' => '_tc_location_ids', 'value' => (int) $location_id ),
+					),
+				)
+			);
+			if ( ! $guides ) {
+				continue;
+			}
+			$guide                  = $guides[0];
+			$data[ $location_id ]   = array(
+				'id'    => $guide->ID,
+				'name'  => $guide->post_title,
+				'bio'   => $guide->post_content,
+				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
+			);
+		}
+		return rest_ensure_response( $data );
 	}
 
 	public static function get_availability( WP_REST_Request $request ) {
@@ -352,7 +398,42 @@ class TC_Rest_Api {
 			}
 		}
 
-		$total = $service['price'] + $extras_total;
+		// "Bring anyone with you" (GitHub issue #6): a real group-size step,
+		// gated per-service, distinct from the older extra-N-person naming
+		// convention above (which stays working for whoever already relies
+		// on it). Capped at the service's own max_capacity, which already
+		// including the customer themself - never trust the client's number
+		// past that ceiling.
+		$guests = array();
+		if ( $service['allow_party'] ) {
+			$requested_party = isset( $params['party_size'] ) ? max( 1, (int) $params['party_size'] ) : 1;
+			$max_party       = max( 1, (int) $service['max_capacity'] );
+			$party_size      = max( $party_size, min( $requested_party, $max_party ) );
+
+			$guests_in = isset( $params['guests'] ) && is_array( $params['guests'] ) ? $params['guests'] : array();
+			foreach ( $guests_in as $guest ) {
+				$g_name  = isset( $guest['name'] ) ? sanitize_text_field( $guest['name'] ) : '';
+				$g_email = isset( $guest['email'] ) && is_email( $guest['email'] ) ? sanitize_email( $guest['email'] ) : '';
+				$g_phone = isset( $guest['phone'] ) ? sanitize_text_field( $guest['phone'] ) : '';
+				if ( '' === $g_name && '' === $g_email && '' === $g_phone ) {
+					continue; // Skip blank rows.
+				}
+				$guests[] = array(
+					'name'  => $g_name,
+					'email' => $g_email,
+					'phone' => $g_phone,
+				);
+			}
+			// Never store more guest rows than the group size allows.
+			$guests = array_slice( $guests, 0, max( 0, $party_size - 1 ) );
+		}
+
+		// Base price is only multiplied by party size for services that opt
+		// into "bring anyone with you" - services using the older extra-based
+		// convention keep charging per-extra, not per-person, exactly as
+		// before.
+		$party_multiplier = $service['allow_party'] ? $party_size : 1;
+		$total            = ( $service['price'] * $party_multiplier ) + $extras_total;
 
 		$booking_id = wp_insert_post(
 			array(
@@ -371,6 +452,7 @@ class TC_Rest_Api {
 		update_post_meta( $booking_id, '_tc_date', $date );
 		update_post_meta( $booking_id, '_tc_status', 'pending_payment' );
 		update_post_meta( $booking_id, '_tc_party_size', $party_size );
+		update_post_meta( $booking_id, '_tc_guests', $guests );
 		update_post_meta( $booking_id, '_tc_selected_extras', $valid_extras );
 		update_post_meta( $booking_id, '_tc_customer_first_name', $first_name );
 		update_post_meta( $booking_id, '_tc_customer_last_name', $last_name );

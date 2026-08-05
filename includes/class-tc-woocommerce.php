@@ -31,6 +31,8 @@ class TC_Woocommerce {
 		$service    = TC_Availability::get_service_data( $service_id );
 		$date       = get_post_meta( $booking_id, '_tc_date', true );
 		$extras     = get_post_meta( $booking_id, '_tc_selected_extras', true );
+		$party_size = max( 1, (int) get_post_meta( $booking_id, '_tc_party_size', true ) );
+		$guests     = get_post_meta( $booking_id, '_tc_guests', true );
 		$first_name = get_post_meta( $booking_id, '_tc_customer_first_name', true );
 		$last_name  = get_post_meta( $booking_id, '_tc_customer_last_name', true );
 		$email      = get_post_meta( $booking_id, '_tc_customer_email', true );
@@ -42,10 +44,21 @@ class TC_Woocommerce {
 			return new WP_Error( 'tc_order_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
 
-		$order->add_fee(
-			sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date ),
-			$service['price']
-		);
+		// "Bring anyone with you" (GitHub issue #6): base price is only
+		// multiplied for services that opt into it - see the matching
+		// comment in TC_Rest_Api::create_booking().
+		$party_multiplier = $service['allow_party'] ? $party_size : 1;
+		$fee_label         = ( $service['allow_party'] && $party_size > 1 )
+			? sprintf(
+				/* translators: 1: service name, 2: date, 3: number of people */
+				__( '%1$s (%2$s) × %3$d people', 'tc-booking' ),
+				$service['name'],
+				$date,
+				$party_size
+			)
+			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date );
+
+		$order->add_fee( $fee_label, $service['price'] * $party_multiplier );
 
 		if ( is_array( $extras ) ) {
 			foreach ( $extras as $extra ) {
@@ -57,6 +70,32 @@ class TC_Woocommerce {
 					$extra['price'] * $extra['qty']
 				);
 			}
+		}
+
+		// Guest details go on the order as a note (visible on the WooCommerce
+		// Edit Order screen's Order notes panel) plus raw meta for any future
+		// custom display - deliberately not building a custom order admin
+		// panel just for this.
+		if ( $service['allow_party'] && is_array( $guests ) && $guests ) {
+			$lines = array();
+			foreach ( $guests as $i => $guest ) {
+				$lines[] = sprintf(
+					'%d. %s (%s%s)',
+					$i + 1,
+					$guest['name'] ? $guest['name'] : __( 'unnamed', 'tc-booking' ),
+					$guest['email'] ? $guest['email'] : '-',
+					$guest['phone'] ? ', ' . $guest['phone'] : ''
+				);
+			}
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: total group size, 2: list of additional guests */
+					__( "Group of %1\$d. Additional guests:\n%2\$s", 'tc-booking' ),
+					$party_size,
+					implode( "\n", $lines )
+				)
+			);
+			$order->update_meta_data( '_tc_guests', $guests );
 		}
 
 		$order->set_billing_first_name( $first_name );

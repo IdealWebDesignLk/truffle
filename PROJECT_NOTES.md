@@ -97,6 +97,28 @@ apart its data model directly shaped this build:
   If a future extra needs to affect capacity and doesn't fit that naming
   convention, this detection will silently miss it - worth an explicit
   "counts as N people" field on the extra if this comes up again.
+  **Update:** that "explicit field" arrived as GitHub issue #6 ("bring
+  anyone with you") - a per-service `_tc_allow_party` checkbox that adds a
+  real group-size step to the booking flow, capped at `max_capacity`,
+  multiplying the base price per person, and collecting each extra
+  guest's name/email/phone (stored as `_tc_guests` on the booking, and
+  surfaced on the WooCommerce order as an order note). It's additive: the
+  older extra-N-person convention above still works unchanged for
+  whichever services don't opt into the checkbox. See `create_booking()`
+  in `class-tc-rest-api.php` and `create_order_for_booking()` in
+  `class-tc-woocommerce.php`.
+  **Known gap surfaced by building this:** `TC_Availability::pick_guide()`
+  only assigns a guide when `get_party_size_booked()` is exactly zero
+  (via `guide_is_free()`), so a second, different customer can never
+  join a guide/date slot that already has one group booked on it - even
+  though `get_date_status()` will happily report that slot as "limited"
+  (implying room remains). In practice this means group capacity
+  (`max_capacity` > 1) currently only really works for a single party
+  filling the whole slot themselves, not multiple separate bookings
+  sharing it. Not fixed here - `pick_guide`/`guide_is_free` is core
+  availability-assignment logic (see the availability engine notes
+  above: "should never be forked") and deserves its own careful pass
+  rather than a change bundled into an unrelated feature request.
 - **Guides are a first-class entity, not an employee-as-resource hack.**
   Amelia had no separate "resource" concept, so group ceremonies were
   represented as fake employee records per location. This plugin gives
