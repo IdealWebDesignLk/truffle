@@ -21,7 +21,34 @@ class TC_Admin_Bookings {
 		add_action( 'admin_post_tc_cancel_booking', array( __CLASS__, 'handle_cancel' ) );
 		add_action( 'admin_post_tc_reschedule_booking', array( __CLASS__, 'handle_reschedule' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'notices' ) );
-		add_action( 'admin_footer-edit.php', array( __CLASS__, 'reschedule_prompt_script' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
+	}
+
+	/**
+	 * The reschedule UI is the same availability calendar the customer-facing
+	 * booking widget uses (GitHub issue #16) - reuses public/css/booking-app.css
+	 * for the calendar visuals and the existing public /availability REST
+	 * route (already permission_callback => __return_true) for the data, so
+	 * there's no new backend surface just for this. handle_reschedule() below
+	 * is unchanged from the old prompt()-based flow; only the trigger UI
+	 * changed.
+	 */
+	public static function enqueue( $hook ) {
+		global $post_type;
+		if ( 'edit.php' !== $hook || TC_CPT::BOOKING !== $post_type ) {
+			return;
+		}
+		wp_enqueue_style( 'tc-booking-app', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
+		wp_enqueue_style( 'tc-admin', TC_BOOKING_URL . 'admin/css/admin.css', array(), TC_BOOKING_VERSION );
+		wp_enqueue_script( 'tc-reschedule-modal', TC_BOOKING_URL . 'admin/js/reschedule-modal.js', array(), TC_BOOKING_VERSION, true );
+		wp_localize_script(
+			'tc-reschedule-modal',
+			'tcRescheduleModal',
+			array(
+				'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
+				'postUrl'  => esc_url( admin_url( 'admin-post.php' ) ),
+			)
+		);
 	}
 
 	public static function columns( $columns ) {
@@ -76,8 +103,18 @@ class TC_Admin_Bookings {
 			esc_js( __( 'Cancel this booking? This also cancels the linked WooCommerce order.', 'tc-booking' ) ) . '\');" style="color:#a3402e;">' .
 			esc_html__( 'Cancel', 'tc-booking' ) . '</a>';
 
-		$actions['tc_reschedule'] = '<a href="#" class="tc-reschedule-link" data-booking-id="' . esc_attr( $post->ID ) . '" data-nonce="' .
-			esc_attr( wp_create_nonce( 'tc_reschedule_booking_' . $post->ID ) ) . '">' . esc_html__( 'Reschedule', 'tc-booking' ) . '</a>';
+		$service_id  = (int) get_post_meta( $post->ID, '_tc_service_id', true );
+		$location_id = (int) get_post_meta( $post->ID, '_tc_location_id', true );
+		$current_date = get_post_meta( $post->ID, '_tc_date', true );
+
+		$actions['tc_reschedule'] = '<a href="#" class="tc-reschedule-link"' .
+			' data-booking-id="' . esc_attr( $post->ID ) . '"' .
+			' data-nonce="' . esc_attr( wp_create_nonce( 'tc_reschedule_booking_' . $post->ID ) ) . '"' .
+			' data-service-id="' . esc_attr( $service_id ) . '"' .
+			' data-location-id="' . esc_attr( $location_id ) . '"' .
+			' data-current-date="' . esc_attr( $current_date ) . '"' .
+			' data-service-name="' . esc_attr( get_the_title( $service_id ) ) . '">' .
+			esc_html__( 'Reschedule', 'tc-booking' ) . '</a>';
 
 		return $actions;
 	}
@@ -149,45 +186,5 @@ class TC_Admin_Bookings {
 			list( $type, $text ) = $messages[ $key ];
 			printf( '<div class="notice notice-%s is-dismissible"><p>%s</p></div>', esc_attr( $type ), esc_html( $text ) );
 		}
-	}
-
-	/**
-	 * Minimal reschedule UI: prompt() for the new date, then submit a plain
-	 * POST form. Deliberately lightweight for v1 - a proper date-picker
-	 * modal is a good candidate for polish once this is in VS Code.
-	 */
-	public static function reschedule_prompt_script() {
-		global $post_type;
-		if ( TC_CPT::BOOKING !== $post_type ) {
-			return;
-		}
-		?>
-		<script>
-		document.addEventListener('click', function (e) {
-			var link = e.target.closest('.tc-reschedule-link');
-			if (!link) return;
-			e.preventDefault();
-			var newDate = prompt('<?php echo esc_js( __( 'New date (YYYY-MM-DD):', 'tc-booking' ) ); ?>');
-			if (!newDate) return;
-			var form = document.createElement('form');
-			form.method = 'POST';
-			form.action = '<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>';
-			[
-				['action', 'tc_reschedule_booking'],
-				['booking_id', link.dataset.bookingId],
-				['new_date', newDate],
-				['_wpnonce', link.dataset.nonce]
-			].forEach(function (pair) {
-				var input = document.createElement('input');
-				input.type = 'hidden';
-				input.name = pair[0];
-				input.value = pair[1];
-				form.appendChild(input);
-			});
-			document.body.appendChild(form);
-			form.submit();
-		});
-		</script>
-		<?php
 	}
 }

@@ -16,6 +16,7 @@ class TC_Meta_Boxes {
 		add_action( 'save_post_' . TC_CPT::LOCATION, array( __CLASS__, 'save_location' ) );
 		add_action( 'save_post_' . TC_CPT::SERVICE, array( __CLASS__, 'save_service' ) );
 		add_action( 'save_post_' . TC_CPT::GUIDE, array( __CLASS__, 'save_guide' ) );
+		add_action( 'save_post_' . TC_CPT::BOOKING, array( __CLASS__, 'save_booking_note' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
 	}
 
@@ -359,6 +360,9 @@ class TC_Meta_Boxes {
 		$email       = get_post_meta( $post->ID, '_tc_customer_email', true );
 		$phone       = get_post_meta( $post->ID, '_tc_customer_phone', true );
 		$extras      = get_post_meta( $post->ID, '_tc_selected_extras', true );
+		$party_size  = max( 1, (int) get_post_meta( $post->ID, '_tc_party_size', true ) );
+		$guests      = get_post_meta( $post->ID, '_tc_guests', true );
+		$admin_note  = get_post_meta( $post->ID, '_tc_admin_note', true );
 
 		$service  = $service_id ? get_post( $service_id ) : null;
 		$location = $location_id ? get_post( $location_id ) : null;
@@ -371,6 +375,44 @@ class TC_Meta_Boxes {
 			<tr><th><?php esc_html_e( 'Location', 'tc-booking' ); ?></th><td><?php echo $location ? esc_html( $location->post_title ) : '&mdash;'; ?></td></tr>
 			<tr><th><?php esc_html_e( 'Guide', 'tc-booking' ); ?></th><td><?php echo $guide ? esc_html( $guide->post_title ) : '&mdash;'; ?></td></tr>
 			<tr><th><?php esc_html_e( 'Date', 'tc-booking' ); ?></th><td><?php echo esc_html( $date ); ?></td></tr>
+			<?php if ( $party_size > 1 ) : ?>
+				<tr>
+					<th><?php esc_html_e( 'Group size', 'tc-booking' ); ?></th>
+					<td>
+						<?php
+						/* translators: %d: total number of people including the customer */
+						printf( esc_html__( '%d people (including the customer)', 'tc-booking' ), (int) $party_size );
+						?>
+					</td>
+				</tr>
+				<tr>
+					<th><?php esc_html_e( 'Additional guests', 'tc-booking' ); ?></th>
+					<td>
+						<?php if ( is_array( $guests ) && $guests ) : ?>
+							<table class="widefat striped" style="max-width:600px;">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Name', 'tc-booking' ); ?></th>
+										<th><?php esc_html_e( 'Email', 'tc-booking' ); ?></th>
+										<th><?php esc_html_e( 'Phone', 'tc-booking' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $guests as $guest ) : ?>
+										<tr>
+											<td><?php echo esc_html( $guest['name'] ?? '' ) ?: '&mdash;'; ?></td>
+											<td><?php echo esc_html( $guest['email'] ?? '' ) ?: '&mdash;'; ?></td>
+											<td><?php echo esc_html( $guest['phone'] ?? '' ) ?: '&mdash;'; ?></td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php else : ?>
+							&mdash;
+						<?php endif; ?>
+					</td>
+				</tr>
+			<?php endif; ?>
 			<tr><th><?php esc_html_e( 'Extras', 'tc-booking' ); ?></th><td><?php echo is_array( $extras ) && $extras ? esc_html( wp_json_encode( $extras ) ) : '&mdash;'; ?></td></tr>
 			<tr>
 				<th><?php esc_html_e( 'WooCommerce order', 'tc-booking' ); ?></th>
@@ -387,8 +429,28 @@ class TC_Meta_Boxes {
 					<?php endif; ?>
 				</td>
 			</tr>
+			<tr>
+				<th><label for="tc_admin_note"><?php esc_html_e( 'Admin note', 'tc-booking' ); ?></label></th>
+				<td>
+					<?php wp_nonce_field( 'tc_save_booking_note', 'tc_booking_note_nonce' ); ?>
+					<textarea id="tc_admin_note" name="tc_admin_note" class="large-text" rows="4"><?php echo esc_textarea( $admin_note ); ?></textarea>
+					<p class="description"><?php esc_html_e( 'Internal note, not shown to the customer. Saved when you update this booking.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
 		</table>
-		<p class="description"><?php esc_html_e( 'To cancel or reschedule, use the actions on the Bookings list screen - editing fields here does not re-validate availability.', 'tc-booking' ); ?></p>
+		<p class="description"><?php esc_html_e( 'To cancel or reschedule, use the actions on the Bookings list screen - editing fields here (other than the note above) does not re-validate availability.', 'tc-booking' ); ?></p>
 		<?php
+	}
+
+	public static function save_booking_note( $post_id ) {
+		if ( ! isset( $_POST['tc_booking_note_nonce'] ) || ! wp_verify_nonce( $_POST['tc_booking_note_nonce'], 'tc_save_booking_note' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+		if ( isset( $_POST['tc_admin_note'] ) ) {
+			update_post_meta( $post_id, '_tc_admin_note', sanitize_textarea_field( wp_unslash( $_POST['tc_admin_note'] ) ) );
+		}
 	}
 }

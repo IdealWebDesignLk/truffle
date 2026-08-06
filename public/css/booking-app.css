@@ -1,5 +1,5 @@
 /* TC Booking - front-end styles. Ported from the approved prototype. */
-#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root {
+#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root {
   --bg: #F5F2EA;
   --surface: #FFFFFF;
   --surface-dim: #EFEAE0;
@@ -24,7 +24,7 @@
   color: var(--ink);
   line-height: 1.55;
 }
-#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root * { box-sizing: border-box; }
+#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root * { box-sizing: border-box; }
 
 .tc-progress { display: flex; gap: 4px; margin-bottom: 24px; }
 .tc-progress .seg { flex: 1; height: 4px; border-radius: 3px; background: var(--line); }
@@ -142,6 +142,7 @@ table.tc-avail td:first-child { text-align: left; color: var(--ink-soft); font-s
 .tc-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .tc-cal-dow { font-size: 11px; color: var(--ink-soft); text-align: center; padding-bottom: 4px; }
 .tc-cal-day { aspect-ratio: 1; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; background: var(--available-bg); color: var(--available); }
-.tc-cal-day.blocked { background: var(--unavailable-bg); color: var(--unavailable); }
-.tc-cal-day.booked { background: var(--limited-bg); color: var(--limited); cursor: default; }
+.tc-cal-day.blocked, .tc-cal-day.off { background: var(--unavailable-bg); color: var(--unavailable); cursor: default; }
+.tc-cal-day.booked, .tc-cal-day.limited { background: var(--limited-bg); color: var(--limited); }
 .tc-cal-day.past { visibility: hidden; }
+.tc-cal-day.selected { outline: 2px solid var(--sage); outline-offset: 2px; font-weight: 700; }
