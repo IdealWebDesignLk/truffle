@@ -386,11 +386,6 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_not_available', __( 'That date is no longer available. Please pick another date.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
-		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $date );
-		if ( ! $guide_id ) {
-			return new WP_Error( 'tc_no_guide', __( 'No guide available for that date.', 'tc-booking' ), array( 'status' => 409 ) );
-		}
-
 		// Validate + price the selected extras against the service's own
 		// extras list (never trust price/label from the client).
 		$valid_extras = array();
@@ -450,6 +445,14 @@ class TC_Rest_Api {
 			}
 			// Never store more guest rows than the group size allows.
 			$guests = array_slice( $guests, 0, max( 0, $party_size - 1 ) );
+		}
+
+		// Guide assignment needs to know the final party size (computed just
+		// above) to correctly check REMAINING capacity for shared/group
+		// services - see TC_Availability::pick_guide().
+		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $date, $party_size );
+		if ( ! $guide_id ) {
+			return new WP_Error( 'tc_no_guide', __( 'No guide available for that date.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
 		// Base price is only multiplied by party size for services that opt
@@ -587,6 +590,7 @@ class TC_Rest_Api {
 
 		$service_id  = (int) get_post_meta( $booking_id, '_tc_service_id', true );
 		$location_id = (int) get_post_meta( $booking_id, '_tc_location_id', true );
+		$party_size  = max( 1, (int) get_post_meta( $booking_id, '_tc_party_size', true ) );
 
 		// Re-validate against the NEW date, excluding this booking's own
 		// existing hold on its old date (the pick_guide/is_bookable calls
@@ -595,7 +599,10 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_not_available', __( 'That new date is not available.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
-		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $new_date );
+		// Needs the booking's own party size so a shared/group booking only
+		// moves to a date with enough REMAINING room for its whole group -
+		// see TC_Availability::pick_guide().
+		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $new_date, $party_size );
 		if ( ! $guide_id ) {
 			return new WP_Error( 'tc_no_guide', __( 'No guide available on that date.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
@@ -613,9 +620,10 @@ class TC_Rest_Api {
 	/* ------------------------------------------------------------------ */
 
 	public static function guide_get_availability( WP_REST_Request $request ) {
-		$guide = self::get_guide_post_for_current_user();
-		$start = self::sanitize_date( $request->get_param( 'start' ) ) ?: gmdate( 'Y-m-d' );
-		$end   = self::sanitize_date( $request->get_param( 'end' ) ) ?: gmdate( 'Y-m-d', strtotime( '+90 days' ) );
+		$guide  = self::get_guide_post_for_current_user();
+		$bounds = self::default_date_range();
+		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
+		$end    = self::sanitize_date( $request->get_param( 'end' ) ) ?: $bounds[1];
 
 		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
 	}
@@ -647,8 +655,9 @@ class TC_Rest_Api {
 			return $guide;
 		}
 
-		$start = self::sanitize_date( $request->get_param( 'start' ) ) ?: gmdate( 'Y-m-d' );
-		$end   = self::sanitize_date( $request->get_param( 'end' ) ) ?: gmdate( 'Y-m-d', strtotime( '+90 days' ) );
+		$bounds = self::default_date_range();
+		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
+		$end    = self::sanitize_date( $request->get_param( 'end' ) ) ?: $bounds[1];
 
 		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
 	}
@@ -741,5 +750,19 @@ class TC_Rest_Api {
 		}
 		$d = DateTime::createFromFormat( 'Y-m-d', $value );
 		return ( $d && $d->format( 'Y-m-d' ) === $value ) ? $value : false;
+	}
+
+	/**
+	 * [today, today + 90 days] using the site's configured timezone
+	 * (Settings -> General -> Timezone, which should be set to Amsterdam -
+	 * this business only operates in the Netherlands) rather than gmdate(),
+	 * which is always UTC regardless of that setting.
+	 *
+	 * @return array{0:string,1:string}
+	 */
+	private static function default_date_range() {
+		$today = current_time( 'Y-m-d' );
+		$end   = ( new DateTime( $today ) )->modify( '+90 days' )->format( 'Y-m-d' );
+		return array( $today, $end );
 	}
 }

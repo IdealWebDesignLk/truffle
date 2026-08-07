@@ -214,12 +214,33 @@
 		r.setDate( r.getDate() + n );
 		return r;
 	}
+	var SITE_TZ = 'Europe/Amsterdam';
+
+	// This business only operates in the Netherlands, so "today" must always
+	// mean the Netherlands' calendar day - not the visitor's own device
+	// timezone (which plain `new Date()` reflects, and which is wrong for a
+	// customer browsing from anywhere else). Built via Intl so CET/CEST
+	// daylight-saving transitions are handled automatically and correctly.
+	// The returned Date is anchored at *local device* midnight for that same
+	// Netherlands calendar day, purely so the day-arithmetic helpers below
+	// (addDays, isoDate) keep working unchanged on top of it.
+	function nlToday() {
+		var parts = new Intl.DateTimeFormat( 'en-CA', { timeZone: SITE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' } ).formatToParts( new Date() );
+		var y, m, d;
+		parts.forEach( function ( p ) {
+			if ( 'year' === p.type ) y = parseInt( p.value, 10 );
+			if ( 'month' === p.type ) m = parseInt( p.value, 10 );
+			if ( 'day' === p.type ) d = parseInt( p.value, 10 );
+		} );
+		return new Date( y, m - 1, d );
+	}
+
 	function isoDate( d ) {
 		// Not toISOString() - that converts to UTC, which silently shifts the
-		// date back a day for any browser ahead of UTC (e.g. the Netherlands,
-		// this site's own market, at UTC+1/+2). Build the string from the
-		// same local date parts toLocaleDateString() already displays, so the
-		// value sent to the server always matches what's on screen.
+		// date back a day for any browser ahead of UTC. Build the string from
+		// local date parts instead, matching how the Date object was built
+		// (nlToday() + addDays()), so what's sent to the server always
+		// matches the Netherlands calendar day being displayed.
 		var y = d.getFullYear();
 		var m = String( d.getMonth() + 1 ).padStart( 2, '0' );
 		var day = String( d.getDate() ).padStart( 2, '0' );
@@ -303,8 +324,7 @@
 
 	function renderGrid() {
 		var loc   = getLocation( state.locationId );
-		var today = new Date();
-		today.setHours( 0, 0, 0, 0 );
+		var today = nlToday();
 		var start = addDays( today, state.weekOffset * 7 );
 		var days  = [];
 		for ( var i = 0; i < 7; i++ ) days.push( addDays( start, i ) );
@@ -557,8 +577,7 @@
 	function loadGrid() {
 		state.gridLoading = true;
 		render();
-		var today = new Date();
-		today.setHours( 0, 0, 0, 0 );
+		var today = nlToday();
 		var start = addDays( today, state.weekOffset * 7 );
 		var end   = addDays( start, 6 );
 

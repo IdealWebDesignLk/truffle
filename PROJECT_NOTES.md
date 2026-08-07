@@ -107,18 +107,23 @@ apart its data model directly shaped this build:
   whichever services don't opt into the checkbox. See `create_booking()`
   in `class-tc-rest-api.php` and `create_order_for_booking()` in
   `class-tc-woocommerce.php`.
-  **Known gap surfaced by building this:** `TC_Availability::pick_guide()`
-  only assigns a guide when `get_party_size_booked()` is exactly zero
-  (via `guide_is_free()`), so a second, different customer can never
-  join a guide/date slot that already has one group booked on it - even
-  though `get_date_status()` will happily report that slot as "limited"
-  (implying room remains). In practice this means group capacity
-  (`max_capacity` > 1) currently only really works for a single party
-  filling the whole slot themselves, not multiple separate bookings
-  sharing it. Not fixed here - `pick_guide`/`guide_is_free` is core
-  availability-assignment logic (see the availability engine notes
-  above: "should never be forked") and deserves its own careful pass
-  rather than a change bundled into an unrelated feature request.
+  **Update - fixed in 0.6.2 (GitHub issue #18):** `TC_Availability::pick_guide()`
+  used to only assign a guide when `get_party_size_booked()` was exactly
+  zero, so a second, different customer could never join a guide/date
+  slot that already had one group booked on it - even though
+  `get_date_status()` correctly reported that slot as "limited" (room
+  remains). `pick_guide()` now takes the new booking's `$party_size` and
+  mirrors `get_date_status()`'s own `max_capacity` branching: individual
+  services (`max_capacity` 1) keep the exact old all-or-nothing rule, but
+  shared/group services now check REMAINING capacity against the
+  specific party size being requested, so a shared service correctly
+  stays open for the remaining seats. Both reschedule paths
+  (`class-tc-admin-bookings.php`'s `handle_reschedule()` and
+  `class-tc-rest-api.php`'s `admin_reschedule_booking()`) were updated to
+  pass the booking's own `_tc_party_size` through, so rescheduling a
+  group booking requires room for the whole group, not just one seat.
+  Also fixed `handle_reschedule()` silently succeeding with
+  `_tc_guide_id` set to 0 if `pick_guide()` returned nothing.
 - **Guides are a first-class entity, not an employee-as-resource hack.**
   Amelia had no separate "resource" concept, so group ceremonies were
   represented as fake employee records per location. This plugin gives
@@ -231,20 +236,33 @@ touching postmeta relationships.
 ## What's NOT done yet
 
 - **GitHub issue #14 ("book a 1-day event, the next day also disappears
-  from the calendar") is only partially addressed as of 0.5.0.** Fixed:
-  `isoDate()` in `booking-app.js`/`guide-dashboard.js`/`guide-availability.js`
-  used `toISOString()`, which converts to UTC and silently shifts the
-  date string back a day for any browser ahead of UTC (Netherlands,
-  this site's own market, is UTC+1/+2) - now built from local date parts
-  instead. However, tracing `TC_Availability::guide_available_on()` by
-  hand for a plain 1-day service didn't turn up a matching off-by-one in
-  the day-span math itself (span correctly collapses to a single day
-  when `duration_days` is 1). If the symptom still reproduces after the
-  timezone fix, get exact repro details before changing this function
-  further - which service/duration, which date was clicked, and exactly
-  which date shows blocked afterward - since this is the piece of the
-  build most explicitly flagged as bug-prone and "should never be
-  forked" without being sure.
+  from the calendar") is still open, pending the client re-testing after
+  0.6.1.** Two timezone fixes have landed so far, neither confirmed yet
+  as the actual fix for #14 itself:
+  - 0.5.0: `isoDate()` used `toISOString()` (UTC), silently shifting the
+    date string back a day for any browser ahead of UTC.
+  - 0.6.1: the client explicitly confirmed this business only operates
+    in the Netherlands, so "today"/calendar navigation must always mean
+    the Netherlands' own calendar day - not the visitor's or admin's own
+    device timezone. Every "today"/"this month" anchor (booking widget,
+    guide dashboard, admin guide calendar, reschedule modal) now goes
+    through an `nlToday()` helper built on `Intl.DateTimeFormat` with
+    `timeZone: 'Europe/Amsterdam'` (handles CET/CEST DST transitions
+    automatically), instead of a bare `new Date()`. Two server-side
+    default date ranges in `class-tc-rest-api.php` that used `gmdate()`
+    (always UTC) were switched to `current_time()` (site-timezone-aware)
+    for the same reason - **this requires Settings -> General -> Timezone
+    to be set to Amsterdam** for the server side to actually agree with
+    the client side; verify that's set correctly on the live site.
+  - Despite both fixes, tracing `TC_Availability::guide_available_on()`
+    by hand for a plain 1-day service still didn't turn up a matching
+    off-by-one in the day-span math itself (span correctly collapses to
+    a single day when `duration_days` is 1). If the symptom still
+    reproduces after 0.6.1, get exact repro details before changing this
+    function further - which service/duration, which date was clicked,
+    and exactly which date shows blocked afterward - since this is the
+    piece of the build most explicitly flagged as bug-prone and "should
+    never be forked" without being sure.
 - WPML wiring - the CPTs/fields exist but aren't yet registered with WPML's
   translation config on the live site.
 - Reschedule admin UI is a plain `prompt()` for the new date (see

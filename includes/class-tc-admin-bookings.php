@@ -156,13 +156,26 @@ class TC_Admin_Bookings {
 
 		$service_id  = (int) get_post_meta( $booking_id, '_tc_service_id', true );
 		$location_id = (int) get_post_meta( $booking_id, '_tc_location_id', true );
+		$party_size  = max( 1, (int) get_post_meta( $booking_id, '_tc_party_size', true ) );
 
 		if ( ! TC_Availability::is_bookable( $service_id, $location_id, $new_date ) ) {
 			wp_safe_redirect( add_query_arg( array( 'post_type' => TC_CPT::BOOKING, 'tc_notice' => 'unavailable' ), admin_url( 'edit.php' ) ) );
 			exit;
 		}
 
-		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $new_date );
+		// Needs the booking's own party size so a shared/group booking only
+		// moves to a date with enough REMAINING room for its whole group -
+		// see TC_Availability::pick_guide().
+		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $new_date, $party_size );
+		if ( ! $guide_id ) {
+			// pick_guide() can fail here even though is_bookable() passed -
+			// is_bookable() only checks "is anything open," not "is there
+			// room for this specific party." Don't silently corrupt the
+			// booking to guide_id 0.
+			wp_safe_redirect( add_query_arg( array( 'post_type' => TC_CPT::BOOKING, 'tc_notice' => 'unavailable' ), admin_url( 'edit.php' ) ) );
+			exit;
+		}
+
 		update_post_meta( $booking_id, '_tc_date', $new_date );
 		update_post_meta( $booking_id, '_tc_guide_id', $guide_id );
 		TC_Notifications::send_reschedule( $booking_id );

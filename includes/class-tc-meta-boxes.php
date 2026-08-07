@@ -152,7 +152,10 @@ class TC_Meta_Boxes {
 			</tr>
 			<tr>
 				<th><label for="tc_max_capacity"><?php esc_html_e( 'Max capacity', 'tc-booking' ); ?></label></th>
-				<td><input type="number" step="1" min="1" id="tc_max_capacity" name="tc_max_capacity" value="<?php echo esc_attr( $max_capacity ); ?>" class="small-text"></td>
+				<td>
+					<input type="number" step="1" min="1" id="tc_max_capacity" name="tc_max_capacity" value="<?php echo esc_attr( $max_capacity ); ?>" class="small-text">
+					<p class="description"><?php esc_html_e( 'Set to 1 for an individual/exclusive service - one booking closes the whole date. Set higher for a shared service - e.g. 4 lets one customer book 2 seats and leaves the other 2 open for someone else to book, until the date fills up.', 'tc-booking' ); ?></p>
+				</td>
 			</tr>
 			<tr>
 				<th><?php esc_html_e( 'Bring anyone with you', 'tc-booking' ); ?></th>

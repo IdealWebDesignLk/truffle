@@ -69,16 +69,41 @@ class TC_Availability {
 
 	/**
 	 * Picks a specific guide to assign to a new booking on a given date -
-	 * the first covering guide who is actually free, so multi-guide
-	 * locations distribute bookings rather than always hitting the same one.
+	 * the first covering guide with enough room for this booking, so
+	 * multi-guide locations distribute bookings rather than always hitting
+	 * the same one.
+	 *
+	 * Individual services (max_capacity 1) keep the original all-or-nothing
+	 * rule: a guide is only eligible if nothing at all is booked with them
+	 * that day. Shared/group services (max_capacity > 1) instead check
+	 * whether a guide has enough REMAINING seats for this specific party -
+	 * without this branch (GitHub issue #18), a shared service behaved like
+	 * an individual one: the first booking of any size closed the whole
+	 * date instead of just using up its own seats and leaving the rest
+	 * open, even though get_date_status() (the grid) already promised
+	 * "limited" availability remained. Mirrors get_date_status()'s own
+	 * max_capacity branching so the grid and the actual assignment agree.
 	 *
 	 * @return int 0 if none available.
 	 */
-	public static function pick_guide( $service_id, $location_id, $date_str ) {
-		$service   = self::get_service_data( $service_id );
-		$guide_ids = self::get_guides_for( $location_id, $service_id );
+	public static function pick_guide( $service_id, $location_id, $date_str, $party_size = 1 ) {
+		$service      = self::get_service_data( $service_id );
+		$guide_ids    = self::get_guides_for( $location_id, $service_id );
+		$max_capacity = max( 1, (int) $service['max_capacity'] );
+		$party_size   = max( 1, (int) $party_size );
+
 		foreach ( $guide_ids as $guide_id ) {
-			if ( self::guide_is_free( $guide_id, $service, $date_str ) ) {
+			if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
+				continue;
+			}
+			if ( 1 === $max_capacity ) {
+				if ( 0 === self::get_party_size_booked( $guide_id, $service['id'], $date_str ) ) {
+					return $guide_id;
+				}
+				continue;
+			}
+			$remaining = $max_capacity - self::get_party_size_booked( $guide_id, $service['id'], $date_str );
+			if ( $remaining >= $party_size ) {
 				return $guide_id;
 			}
 		}

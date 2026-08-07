@@ -45,11 +45,29 @@
 		} );
 	}
 
+	var SITE_TZ = 'Europe/Amsterdam';
+
+	// This business only operates in the Netherlands, so "today"/"this
+	// month" must always mean the Netherlands' calendar day, not the
+	// visitor's own device timezone. Built via Intl so CET/CEST
+	// daylight-saving transitions are handled automatically and correctly.
+	function nlToday() {
+		var parts = new Intl.DateTimeFormat( 'en-CA', { timeZone: SITE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' } ).formatToParts( new Date() );
+		var y, m, d;
+		parts.forEach( function ( p ) {
+			if ( 'year' === p.type ) y = parseInt( p.value, 10 );
+			if ( 'month' === p.type ) m = parseInt( p.value, 10 );
+			if ( 'day' === p.type ) d = parseInt( p.value, 10 );
+		} );
+		return new Date( y, m - 1, d );
+	}
+
 	function isoDate( d ) {
 		// Not toISOString() - that converts to UTC, which silently shifts the
-		// date back a day for any browser ahead of UTC (e.g. the Netherlands,
-		// this site's own market, at UTC+1/+2). Build the string from local
-		// date parts so what's saved always matches the day actually clicked.
+		// date back a day for any browser ahead of UTC. Build the string from
+		// local date parts instead, matching how the Date object was built
+		// (nlToday()), so what's saved always matches the Netherlands
+		// calendar day being displayed.
 		var y = d.getFullYear();
 		var m = String( d.getMonth() + 1 ).padStart( 2, '0' );
 		var day = String( d.getDate() ).padStart( 2, '0' );
@@ -57,7 +75,7 @@
 	}
 
 	function monthBounds( offset ) {
-		var now   = new Date();
+		var now   = nlToday();
 		var first = new Date( now.getFullYear(), now.getMonth() + offset, 1 );
 		var last  = new Date( now.getFullYear(), now.getMonth() + offset + 1, 0 );
 		return { first: first, last: last };
@@ -96,8 +114,7 @@
 		var monthName = bounds.first.toLocaleDateString( 'en-US', { month: 'long', year: 'numeric' } );
 		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
 		var daysInMo  = bounds.last.getDate();
-		var today     = new Date();
-		today.setHours( 0, 0, 0, 0 );
+		var today     = nlToday();
 
 		var cells = '';
 		for ( var i = 0; i < firstDow; i++ ) {
