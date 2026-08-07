@@ -138,6 +138,28 @@ apart its data model directly shaped this build:
   is off, so any existing service relying on the just-shipped 0.6.2
   sharing behavior needs this checkbox turned on explicitly to keep
   working that way.
+  **Second follow-up in 0.7.1 (GitHub issue #19):** turning the
+  checkbox on still didn't work - client tested booking 2 of 4 seats
+  and the date showed fully booked anyway. Root cause was one level
+  deeper than 0.6.2/0.7.0 touched: `guide_available_on()` (the
+  guide-conflict check both `pick_guide()` and `get_date_status()` call
+  *before* ever reaching the remaining-capacity math) queries ALL of a
+  guide's non-cancelled bookings across every service and blocks on any
+  date-range overlap - written under the assumption "a guide can only
+  be in one place at a time," which is true, but it didn't know a
+  shared service's own seat-holders on the exact same date aren't a
+  real conflict. So the very first booking of a shared service made
+  every subsequent booking attempt see itself as "the guide is already
+  booked" and bail before capacity was ever checked. Fixed by skipping
+  that block specifically when the existing booking is for the SAME
+  service, on the SAME exact date, AND the service isn't exclusive - a
+  different service, or a different start date of the same service
+  (e.g. two overlapping multi-day sessions), still correctly blocks.
+  Lesson for next time: when a fix touches guide_available_on(),
+  pick_guide(), or get_date_status(), trace through an actual *second*
+  booking into an already-partially-filled shared slot, not just the
+  first booking into an empty one - that's exactly the path this bug
+  hid in twice in a row.
 - **Guides are a first-class entity, not an employee-as-resource hack.**
   Amelia had no separate "resource" concept, so group ceremonies were
   represented as fake employee records per location. This plugin gives

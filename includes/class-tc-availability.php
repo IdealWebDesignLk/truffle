@@ -220,6 +220,25 @@ class TC_Availability {
 		);
 
 		foreach ( $booking_rows as $row ) {
+			// A shared service's own existing bookings on this exact same
+			// date aren't a real scheduling conflict - that's what "seats"
+			// means, and it's governed separately by get_party_size_booked()
+			// / max_capacity (see is_exclusive()). Without this exemption,
+			// the very first booking of a shared service made this function
+			// return false for every subsequent one regardless of remaining
+			// capacity, since their date ranges trivially "overlap" by being
+			// the same date - this was the actual bug behind GitHub issue
+			// #19 ("booked 2 of 4 seats, but the date shows fully booked").
+			// A genuinely different service, or a different start date of
+			// this same service (e.g. two overlapping multi-day sessions),
+			// still counts as the guide being busy and must still block.
+			if ( (int) $row->booking_service_id === (int) $service['id']
+				&& $row->booking_date === $date_str
+				&& ! self::is_exclusive( $service )
+			) {
+				continue;
+			}
+
 			$other_service  = self::get_service_data( (int) $row->booking_service_id );
 			$other_duration = $other_service ? max( 1, (int) $other_service['duration_days'] ) : 1;
 			$other_start    = new DateTime( $row->booking_date );
