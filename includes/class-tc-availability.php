@@ -26,7 +26,7 @@ class TC_Availability {
 	 * @param int    $location_id
 	 * @param string $start_date  Y-m-d
 	 * @param string $end_date    Y-m-d
-	 * @return array[] [ ['date' => 'Y-m-d', 'status' => 'available'|'limited'|'off', 'price' => float], ... ]
+	 * @return array[] [ ['date' => 'Y-m-d', 'status' => 'available'|'limited'|'off', 'price' => float, 'remaining' => int|null], ... ]
 	 */
 	public static function get_grid( $service_id, $location_id, $start_date, $end_date ) {
 		$service = self::get_service_data( $service_id );
@@ -41,11 +41,13 @@ class TC_Availability {
 		$end    = new DateTime( $end_date );
 
 		while ( $cursor <= $end ) {
-			$date_str = $cursor->format( 'Y-m-d' );
-			$grid[]   = array(
-				'date'   => $date_str,
-				'status' => self::get_date_status( $service, $guide_ids, $date_str ),
-				'price'  => $service['price'],
+			$date_str      = $cursor->format( 'Y-m-d' );
+			$status_remain = self::get_date_status_and_remaining( $service, $guide_ids, $date_str );
+			$grid[]        = array(
+				'date'      => $date_str,
+				'status'    => $status_remain['status'],
+				'price'     => $service['price'],
+				'remaining' => $status_remain['remaining'],
 			);
 			$cursor->modify( '+1 day' );
 		}
@@ -130,17 +132,36 @@ class TC_Availability {
 	}
 
 	private static function get_date_status( $service, $guide_ids, $date_str ) {
+		return self::get_date_status_and_remaining( $service, $guide_ids, $date_str )['status'];
+	}
+
+	/**
+	 * Same result as get_date_status(), plus how many seats are actually
+	 * left for a shared service on this date - null for exclusive services,
+	 * where a seat count doesn't mean anything (GitHub issue #20: the
+	 * booking widget capped "how many people are you bringing" at the
+	 * service's static Max capacity instead of what's actually left for the
+	 * specific date, and there was no way to show remaining seats on the
+	 * calendar at all).
+	 *
+	 * Mirrors pick_guide()'s own guide-selection order (first covering
+	 * guide with room wins) so the number shown here always matches
+	 * whichever guide would actually be assigned if the customer books.
+	 *
+	 * @return array{status:string,remaining:?int}
+	 */
+	private static function get_date_status_and_remaining( $service, $guide_ids, $date_str ) {
 		if ( empty( $guide_ids ) ) {
-			return 'off';
+			return array( 'status' => 'off', 'remaining' => null );
 		}
 
 		if ( self::is_exclusive( $service ) ) {
 			foreach ( $guide_ids as $guide_id ) {
 				if ( self::guide_is_free( $guide_id, $service, $date_str ) ) {
-					return 'available';
+					return array( 'status' => 'available', 'remaining' => null );
 				}
 			}
-			return 'off';
+			return array( 'status' => 'off', 'remaining' => null );
 		}
 
 		// Shared service: sum party size already booked across all covering
@@ -153,15 +174,15 @@ class TC_Availability {
 				continue;
 			}
 			$used      = self::get_party_size_booked( $guide_id, $service['id'], $date_str );
-			$remaining = $max_capacity - $used;
+			$remaining = max( 0, $max_capacity - $used );
 			if ( $remaining >= $max_capacity ) {
-				return 'available';
+				return array( 'status' => 'available', 'remaining' => $remaining );
 			}
 			if ( $remaining > 0 ) {
-				return 'limited';
+				return array( 'status' => 'limited', 'remaining' => $remaining );
 			}
 		}
-		return 'off';
+		return array( 'status' => 'off', 'remaining' => 0 );
 	}
 
 	private static function guide_is_free( $guide_id, $service, $date_str ) {

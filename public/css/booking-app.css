@@ -94,6 +94,7 @@ table.tc-avail td:first-child { text-align: left; color: var(--ink-soft); font-s
 .tc-cell.available { background: var(--available-bg); color: var(--available); }
 .tc-cell.limited { background: var(--limited-bg); color: var(--limited); }
 .tc-cell.off { background: var(--unavailable-bg); color: var(--unavailable); font-weight: 400; cursor: default; }
+.tc-cell-remaining { font-size: 9.5px; font-weight: 400; opacity: .8; line-height: 1.3; }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
 .tc-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

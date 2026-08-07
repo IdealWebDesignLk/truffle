@@ -160,6 +160,21 @@ apart its data model directly shaped this build:
   booking into an already-partially-filled shared slot, not just the
   first booking into an empty one - that's exactly the path this bug
   hid in twice in a row.
+  **Third follow-up in 0.8.0 (GitHub issue #20):** the party-size step
+  ("how many people are you bringing") was still capped at the
+  service's *static* `max_capacity`, not the *actual remaining* seats
+  for the specific date - so a shared service with 2 of 4 seats
+  already taken would still offer up to 4, only to get rejected by
+  `pick_guide()`'s already-correct remaining-capacity check at
+  submission time. `TC_Availability::get_date_status()` was split into
+  `get_date_status()` (thin wrapper, unchanged callers) and
+  `get_date_status_and_remaining()`, which also returns the actual
+  seat count for shared services (null for exclusive ones) - the same
+  guide-selection order as `pick_guide()`, so the number shown always
+  matches whichever guide would really be assigned. `get_grid()` now
+  returns a `remaining` field per cell; the booking widget reads it
+  both to show a "N left" label on the calendar and to cap the
+  party-size stepper for whichever cell is currently selected.
 - **Guides are a first-class entity, not an employee-as-resource hack.**
   Amelia had no separate "resource" concept, so group ceremonies were
   represented as fake employee records per location. This plugin gives

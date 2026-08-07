@@ -189,6 +189,31 @@
 		} );
 		return found;
 	}
+	// The grid cell for the currently selected service+date - carries the
+	// real remaining-seat count for shared services (null for exclusive
+	// ones), straight from the same /availability data already loaded for
+	// the grid.
+	function selectedGridCell() {
+		var found = null;
+		state.grid.forEach( function ( g ) {
+			if ( g.service_id === state.serviceId && g.date === state.date ) found = g;
+		} );
+		return found;
+	}
+	// GitHub issue #20 - "how many people are you bringing" must be capped
+	// at what's actually left for THIS date, not just the service's static
+	// Max capacity - a shared service with 2 of 4 seats already taken must
+	// only offer up to 2, not 4.
+	function partySizeMax() {
+		var service = getService( state.serviceId );
+		if ( ! service ) return 1;
+		var cap  = Math.max( 1, service.max_capacity );
+		var cell = selectedGridCell();
+		if ( cell && null !== cell.remaining && undefined !== cell.remaining ) {
+			cap = Math.max( 1, Math.min( cap, cell.remaining ) );
+		}
+		return cap;
+	}
 	function fmt( n ) {
 		return '\u20ac' + Number( n ).toLocaleString( 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 } );
 	}
@@ -345,7 +370,10 @@
 				if ( ! cell || 'off' === cell.status ) {
 					return '<td><div class="tc-cell off">&mdash;</div></td>';
 				}
-				return '<td><div class="tc-cell ' + cell.status + '" data-svc="' + svc.id + '" data-date="' + iso + '">' + fmt( cell.price ) + '</div></td>';
+				var remainingLine = ( null !== cell.remaining && undefined !== cell.remaining )
+					? '<div class="tc-cell-remaining">' + cell.remaining + ' left</div>'
+					: '';
+				return '<td><div class="tc-cell ' + cell.status + '" data-svc="' + svc.id + '" data-date="' + iso + '">' + remainingLine + fmt( cell.price ) + '</div></td>';
 			} ).join( '' );
 			return '<tr><td>' + escapeHtml( svc.name ) + '<small>' + svc.duration_days + ( svc.duration_days > 1 ? ' days' : ' day' ) + '</small></td>' + cells + '</tr>';
 		} ).join( '' );
@@ -366,10 +394,16 @@
 	function renderParty() {
 		var service = getService( state.serviceId );
 		if ( ! service ) return '<p>Please go back and pick a date.</p>';
-		var max = Math.max( 1, service.max_capacity );
+		var max = partySizeMax();
+		if ( state.partySize > max ) {
+			state.partySize = max;
+			state.guests.length = Math.max( 0, max - 1 );
+		}
 
+		var limited = max < Math.max( 1, service.max_capacity );
 		return '<p class="tc-eyebrow">' + stepLabel( 'party' ) + '</p><h2 class="tc-title">How many people are you bringing?</h2>' +
-			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony. The base price is charged per person.</p>' +
+			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony' +
+			( limited ? ' (limited availability on this date)' : '' ) + '. The base price is charged per person.</p>' +
 			'<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">Total in your group</div>' +
 			'<div class="ep">' + fmt( service.price ) + ' per person</div></div>' +
 			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
@@ -556,9 +590,8 @@
 	}
 
 	function adjustPartySize( dir ) {
-		var service = getService( state.serviceId );
-		var max     = Math.max( 1, service.max_capacity );
-		var v       = Math.max( 1, Math.min( max, state.partySize + dir ) );
+		var max = partySizeMax();
+		var v    = Math.max( 1, Math.min( max, state.partySize + dir ) );
 		state.partySize = v;
 		state.guests.length = Math.max( 0, v - 1 ); // trim/grow to match, blanks fill in at render time
 		render();

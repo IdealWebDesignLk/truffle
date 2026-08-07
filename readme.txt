@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.7.1
+Stable tag: 0.8.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,16 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.8.0 =
+* Fixed "how many people are you bringing" letting a customer select
+  more than what's actually left on a shared service's date - it was
+  capped at the service's static Max capacity instead of the real
+  remaining seats for that specific date (e.g. offering up to 4 when
+  only 2 were actually left). Resolves GitHub issue #20.
+* The availability calendar now shows a small "N left" label on shared
+  service dates, so customers can see remaining seats before picking a
+  date. Resolves GitHub issue #20.
 
 = 0.7.1 =
 * Fixed shared services still showing "fully booked" after only part of
