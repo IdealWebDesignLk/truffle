@@ -116,6 +116,7 @@ class TC_Meta_Boxes {
 		$min_capacity  = get_post_meta( $post->ID, '_tc_min_capacity', true );
 		$max_capacity  = get_post_meta( $post->ID, '_tc_max_capacity', true );
 		$allow_party   = get_post_meta( $post->ID, '_tc_allow_party', true );
+		$shared_seats  = get_post_meta( $post->ID, '_tc_allow_shared_seats', true );
 
 		if ( '' === $duration_days ) {
 			$duration_days = 1;
@@ -154,7 +155,21 @@ class TC_Meta_Boxes {
 				<th><label for="tc_max_capacity"><?php esc_html_e( 'Max capacity', 'tc-booking' ); ?></label></th>
 				<td>
 					<input type="number" step="1" min="1" id="tc_max_capacity" name="tc_max_capacity" value="<?php echo esc_attr( $max_capacity ); ?>" class="small-text">
-					<p class="description"><?php esc_html_e( 'Set to 1 for an individual/exclusive service - one booking closes the whole date. Set higher for a shared service - e.g. 4 lets one customer book 2 seats and leaves the other 2 open for someone else to book, until the date fills up.', 'tc-booking' ); ?></p>
+					<p class="description"><?php esc_html_e( 'The most people that can be on this date at all (also caps the group size in "Bring anyone with you" below). Whether OTHER, unrelated customers can book the leftover seats is controlled separately by "Allow sharing remaining seats" below.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Allow sharing remaining seats', 'tc-booking' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" id="tc_allow_shared_seats" name="tc_allow_shared_seats" value="1" <?php checked( '1', $shared_seats ); ?>>
+						<?php esc_html_e( 'Let other, unrelated customers book the remaining seats once part of Max capacity is used', 'tc-booking' ); ?>
+					</label>
+					<p class="description">
+						<?php esc_html_e( 'Off (default): the first booking on a date closes it entirely to everyone else, even if it doesn\'t use up the full Max capacity - use this for a private booking where a party of e.g. 3 shouldn\'t leave the 4th seat open to a stranger.', 'tc-booking' ); ?>
+						<br>
+						<?php esc_html_e( 'On: this is a genuinely public/shared service - e.g. Max capacity 4 lets one customer book 2 seats and leaves the other 2 open for someone else to book, until the date fills up.', 'tc-booking' ); ?>
+					</p>
 				</td>
 			</tr>
 			<tr>
@@ -230,6 +245,7 @@ class TC_Meta_Boxes {
 		}
 
 		update_post_meta( $post_id, '_tc_allow_party', isset( $_POST['tc_allow_party'] ) ? '1' : '' );
+		update_post_meta( $post_id, '_tc_allow_shared_seats', isset( $_POST['tc_allow_shared_seats'] ) ? '1' : '' );
 
 		$extras = array();
 		if ( isset( $_POST['tc_extras'] ) && is_array( $_POST['tc_extras'] ) ) {

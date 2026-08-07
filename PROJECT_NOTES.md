@@ -124,6 +124,20 @@ apart its data model directly shaped this build:
   group booking requires room for the whole group, not just one seat.
   Also fixed `handle_reschedule()` silently succeeding with
   `_tc_guide_id` set to 0 if `pick_guide()` returned nothing.
+  **Follow-up in 0.7.0:** the client pointed out 0.6.2's fix was too
+  broad - `max_capacity > 1` alone isn't the same thing as "strangers
+  can share this date." A private "Bring anyone with you" booking for
+  3 of a Max capacity of 4 should NOT leave the 4th seat open to a
+  stranger, even though `max_capacity` is 4. Added a separate
+  `_tc_allow_shared_seats` checkbox on the Service (off by default) -
+  `TC_Availability::is_exclusive()` is now the single place that
+  decides exclusive-vs-shared, checked by both `pick_guide()` and
+  `get_date_status()`: a service is exclusive if `max_capacity` is 1
+  OR the checkbox is off, and only genuinely shared (checkbox on,
+  capacity > 1) uses the remaining-capacity math from 0.6.2. Default
+  is off, so any existing service relying on the just-shipped 0.6.2
+  sharing behavior needs this checkbox turned on explicitly to keep
+  working that way.
 - **Guides are a first-class entity, not an employee-as-resource hack.**
   Amelia had no separate "resource" concept, so group ceremonies were
   represented as fake employee records per location. This plugin gives

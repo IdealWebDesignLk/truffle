@@ -73,22 +73,26 @@ class TC_Availability {
 	 * multi-guide locations distribute bookings rather than always hitting
 	 * the same one.
 	 *
-	 * Individual services (max_capacity 1) keep the original all-or-nothing
-	 * rule: a guide is only eligible if nothing at all is booked with them
-	 * that day. Shared/group services (max_capacity > 1) instead check
-	 * whether a guide has enough REMAINING seats for this specific party -
-	 * without this branch (GitHub issue #18), a shared service behaved like
-	 * an individual one: the first booking of any size closed the whole
-	 * date instead of just using up its own seats and leaving the rest
-	 * open, even though get_date_status() (the grid) already promised
-	 * "limited" availability remained. Mirrors get_date_status()'s own
-	 * max_capacity branching so the grid and the actual assignment agree.
+	 * Exclusive services (see is_exclusive()) keep the original
+	 * all-or-nothing rule: a guide is only eligible if nothing at all is
+	 * booked with them that day - this is also what a private booking with
+	 * "Bring anyone with you" needs, e.g. a party of 3 out of a Max
+	 * capacity of 4 that must NOT leave the 4th seat open to a stranger.
+	 * Shared services instead check whether a guide has enough REMAINING
+	 * seats for this specific party - without this branch (GitHub issue
+	 * #18), a shared service behaved like an exclusive one: the first
+	 * booking of any size closed the whole date instead of just using up
+	 * its own seats and leaving the rest open, even though
+	 * get_date_status() (the grid) already promised "limited" availability
+	 * remained. Mirrors get_date_status()'s own branching so the grid and
+	 * the actual assignment agree.
 	 *
 	 * @return int 0 if none available.
 	 */
 	public static function pick_guide( $service_id, $location_id, $date_str, $party_size = 1 ) {
 		$service      = self::get_service_data( $service_id );
 		$guide_ids    = self::get_guides_for( $location_id, $service_id );
+		$exclusive    = self::is_exclusive( $service );
 		$max_capacity = max( 1, (int) $service['max_capacity'] );
 		$party_size   = max( 1, (int) $party_size );
 
@@ -96,7 +100,7 @@ class TC_Availability {
 			if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
 				continue;
 			}
-			if ( 1 === $max_capacity ) {
+			if ( $exclusive ) {
 				if ( 0 === self::get_party_size_booked( $guide_id, $service['id'], $date_str ) ) {
 					return $guide_id;
 				}
@@ -110,14 +114,27 @@ class TC_Availability {
 		return 0;
 	}
 
+	/**
+	 * A service is "exclusive" - one booking closes the whole date to
+	 * everyone else, regardless of how many of its seats that booking
+	 * actually used - when either it only has one seat total, or the admin
+	 * hasn't explicitly turned on "Allow sharing remaining seats". Sharing
+	 * is opt-in: a private booking for up to N people (via "Bring anyone
+	 * with you") should not, by default, leave its unused seats open to a
+	 * stranger just because Max capacity was set higher than the actual
+	 * party size.
+	 */
+	private static function is_exclusive( $service ) {
+		$max_capacity = max( 1, (int) $service['max_capacity'] );
+		return 1 === $max_capacity || empty( $service['allow_shared_seats'] );
+	}
+
 	private static function get_date_status( $service, $guide_ids, $date_str ) {
 		if ( empty( $guide_ids ) ) {
 			return 'off';
 		}
 
-		$max_capacity = max( 1, (int) $service['max_capacity'] );
-
-		if ( 1 === $max_capacity ) {
+		if ( self::is_exclusive( $service ) ) {
 			foreach ( $guide_ids as $guide_id ) {
 				if ( self::guide_is_free( $guide_id, $service, $date_str ) ) {
 					return 'available';
@@ -126,10 +143,11 @@ class TC_Availability {
 			return 'off';
 		}
 
-		// Group service: sum party size already booked across all covering
+		// Shared service: sum party size already booked across all covering
 		// guides for this date (a group session is one guide, one date - but
 		// we don't yet know which guide will end up assigned, so we check
 		// whether ANY covering guide has room).
+		$max_capacity = max( 1, (int) $service['max_capacity'] );
 		foreach ( $guide_ids as $guide_id ) {
 			if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
 				continue;
@@ -271,15 +289,16 @@ class TC_Availability {
 		}
 		$extras = get_post_meta( $service_id, '_tc_extras', true );
 		return array(
-			'id'             => $post->ID,
-			'name'           => $post->post_title,
-			'price'          => (float) get_post_meta( $service_id, '_tc_price', true ),
-			'duration_days'  => (int) get_post_meta( $service_id, '_tc_duration_days', true ) ?: 1,
-			'start_time'     => get_post_meta( $service_id, '_tc_start_time', true ),
-			'min_capacity'   => (int) get_post_meta( $service_id, '_tc_min_capacity', true ) ?: 1,
-			'max_capacity'   => (int) get_post_meta( $service_id, '_tc_max_capacity', true ) ?: 1,
-			'allow_party'    => (bool) get_post_meta( $service_id, '_tc_allow_party', true ),
-			'extras'         => is_array( $extras ) ? $extras : array(),
+			'id'                 => $post->ID,
+			'name'               => $post->post_title,
+			'price'              => (float) get_post_meta( $service_id, '_tc_price', true ),
+			'duration_days'      => (int) get_post_meta( $service_id, '_tc_duration_days', true ) ?: 1,
+			'start_time'         => get_post_meta( $service_id, '_tc_start_time', true ),
+			'min_capacity'       => (int) get_post_meta( $service_id, '_tc_min_capacity', true ) ?: 1,
+			'max_capacity'       => (int) get_post_meta( $service_id, '_tc_max_capacity', true ) ?: 1,
+			'allow_party'        => (bool) get_post_meta( $service_id, '_tc_allow_party', true ),
+			'allow_shared_seats' => (bool) get_post_meta( $service_id, '_tc_allow_shared_seats', true ),
+			'extras'             => is_array( $extras ) ? $extras : array(),
 		);
 	}
 }
