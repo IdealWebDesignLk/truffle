@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Uses Amelia (Elite REST API) as the scheduling backend where configured, with a fully custom front-end and admin layer for locations, services, guides, and WooCommerce checkout.
- * Version:           0.9.0
+ * Version:           0.9.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design

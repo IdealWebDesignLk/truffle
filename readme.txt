@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.9.0
+Stable tag: 0.9.1
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,22 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.9.1 =
+* Guide details now show above the map on the location step instead of
+  below it, and the map is sized down slightly. Resolves GitHub issue
+  #31.
+* The availability calendar's "N left" remaining-seat label is now
+  larger and fully opaque. Resolves GitHub issue #33.
+* Availability calendar date boxes are more compact (capped grid width,
+  slightly shorter cells) instead of stretching to fill the full card
+  width on wider screens. Resolves GitHub issue #34.
+* A few spots left over from the green-to-purple rebrand (issue #22)
+  were still using the calendar's green "available" tint purely as a
+  generic selected/success color - the location-step selection summary,
+  selected location row, and selected service card now use a purple
+  tint instead. The calendar's own available/limited/unavailable status
+  colors are unchanged. Resolves GitHub issue #32.
 
 = 0.9.0 =
 * Booking review now shows the main booker's own name/email/phone, not

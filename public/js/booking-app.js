@@ -390,12 +390,15 @@
 			// (row-reverse, so mobile's stacked map-then-list DOM order is
 			// untouched); issue #25 - larger .tc-map-svg cap lets the map
 			// (and its pin labels, which scale with the SVG) grow bigger in
-			// that wider column.
+			// that wider column. Issue #31 - guide details now render above
+			// the map (was below it) so they're visible without scrolling
+			// past the map first; map cap sized back down slightly too.
 			'<div class="tc-loc-layout">' +
-			'<div class="tc-loc-map-col"><div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="0 0 320 400" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
+			'<div class="tc-loc-map-col">' + employeeCard +
+			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="0 0 320 400" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
 			'<path class="tc-map-outline" d="' + NL_OUTLINE + '"></path>' + pins + '</svg>' +
 			'<p class="tc-map-caption">Tap a pin, or pick from the list</p></div>' +
-			employeeCard + '</div>' +
+			'</div>' +
 			'<div class="tc-loc-list-col"><div class="tc-loc-list">' + list + '</div></div>' +
 			'</div>' +
 			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>Continue</button></div>';

@@ -9,7 +9,15 @@
      from brand color, and changing it would make the calendar harder to
      scan at a glance. Renamed --sage/--sage-deep/--ochre to
      --brand/--brand-deep/--brand-light so the variable names still
-     describe what they hold. */
+     describe what they hold.
+
+     GitHub issue #32 - #22 missed a few spots that were reusing
+     --available-bg (green) purely as a generic "selected/success" tint,
+     not to represent calendar availability: the location-step selection
+     summary pill, the selected location row, the selected service card,
+     and the (currently unused) confirmation icon. Added --brand-bg (a
+     light purple tint) for those and left --available-bg alone so the
+     calendar's status coding is untouched. */
   --bg: #FAF8FC;
   --surface: #FFFFFF;
   --surface-dim: #F1EEF7;
@@ -18,6 +26,7 @@
   --brand: #6D4AA8;
   --brand-deep: #4B2E7D;
   --brand-light: #9B6FD1;
+  --brand-bg: #EFE9F9;
   --line: #E4E0EC;
   --available: #3F7A5D;
   --available-bg: #E6F0E9;
@@ -60,7 +69,7 @@
 .tc-eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); margin: 0 0 6px; font-weight: 600; }
 .tc-title { font-size: 24px; font-weight: 600; margin: 0 0 6px; }
 .tc-sub { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 20px; }
-.tc-selection-summary { display: inline-block; background: var(--available-bg); color: var(--brand-deep); font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 20px; margin-bottom: 18px; }
+.tc-selection-summary { display: inline-block; background: var(--brand-bg); color: var(--brand-deep); font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 20px; margin-bottom: 18px; }
 
 .tc-error { background: #FBEAE6; color: var(--danger); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
 
@@ -76,15 +85,17 @@
 .tc-loc-list { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px; margin-bottom: 22px; }
 .tc-loc-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
 .tc-loc-row:hover { border-color: var(--brand); }
-.tc-loc-row.selected { border-color: var(--brand); background: var(--available-bg); }
+.tc-loc-row.selected { border-color: var(--brand); background: var(--brand-bg); }
 .tc-loc-row .name { font-size: 14px; font-weight: 500; }
 
 /* GitHub issue #25 - bigger map cap so it (and its pin labels, which scale
    with the SVG's own on-screen size) is easier to read; the two-column
    layout above also gives it more room on desktop. */
 .tc-map-wrap { background: var(--surface-dim); border-radius: 12px; padding: 10px 10px 6px; margin-bottom: 14px; }
-.tc-map-svg { width: 100%; height: auto; display: block; max-height: 420px; }
-@media (min-width: 760px) { .tc-map-svg { max-height: 560px; } }
+/* GitHub issue #31 - "zoom out map a bit": caps trimmed back down from
+   issue #25's sizing now that the guide card also shares this column. */
+.tc-map-svg { width: 100%; height: auto; display: block; max-height: 360px; }
+@media (min-width: 760px) { .tc-map-svg { max-height: 480px; } }
 .tc-map-outline { fill: #EAE3F5; stroke: var(--brand); stroke-width: 1.3; stroke-linejoin: round; }
 .tc-pin-group { cursor: pointer; }
 .tc-pin { fill: var(--brand); stroke: #FFFFFF; stroke-width: 2; transition: r .12s ease, fill .12s ease; }
@@ -121,25 +132,32 @@
 @media (max-width: 480px) { .tc-svc-cards { grid-template-columns: 1fr; } }
 .tc-svc-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; }
 .tc-svc-card:hover { border-color: var(--brand); }
-.tc-svc-card.selected { border-color: var(--brand); background: var(--available-bg); }
+.tc-svc-card.selected { border-color: var(--brand); background: var(--brand-bg); }
 .tc-svc-card .svc-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .tc-svc-card .svc-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ink-soft); }
 .tc-svc-card .svc-price { font-weight: 600; color: var(--ink); }
 
 .tc-cal-heading { font-size: 15px; font-weight: 600; margin: 22px 0 2px; padding-top: 18px; border-top: 1px solid var(--line); }
 
-.tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+/* GitHub issue #34 - date boxes read as too big, especially on wider
+   screens where the 7-column grid stretched to fill the full card width.
+   Capping the grid's own max-width (instead of just shrinking each cell)
+   keeps cells square and legible while compacting the calendar as a
+   whole; aspect-ratio was also relaxed slightly so cells aren't as tall. */
+.tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 400px; margin: 0 auto; }
 .tc-avail-dow { font-size: 11px; color: var(--ink-soft); text-align: center; padding-bottom: 4px; }
-.tc-avail-day { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
-.tc-avail-day .d { font-size: 14px; font-weight: 600; }
-.tc-avail-day .status { font-size: 8.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
-.tc-avail-day .rem { font-size: 8px; opacity: .85; }
+.tc-avail-day { aspect-ratio: 1 / 0.9; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
+.tc-avail-day .d { font-size: 13px; font-weight: 600; }
+.tc-avail-day .status { font-size: 8px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+/* GitHub issue #33 - "N left" was too small to read at a glance next to
+   the status label; bumped up and given full opacity. */
+.tc-avail-day .rem { font-size: 10.5px; font-weight: 600; opacity: 1; }
 .tc-avail-day.limited { background: var(--limited-bg); color: var(--limited); }
 .tc-avail-day.off { background: var(--unavailable-bg); color: var(--unavailable); cursor: default; }
 .tc-avail-day.empty { visibility: hidden; }
 .tc-avail-day.past { background: transparent; color: var(--ink-soft); opacity: .4; cursor: default; }
 .tc-avail-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; }
-@media (max-width: 480px) { .tc-avail-day { font-size: 10.5px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } }
+@media (max-width: 480px) { .tc-avail-cal { max-width: none; } .tc-avail-day { font-size: 10px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } .tc-avail-day .rem { font-size: 9px; } }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
 .tc-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
@@ -180,7 +198,7 @@
 .tc-btn.ghost { border-color: transparent; background: none; color: var(--ink-soft); }
 
 .tc-confirm { text-align: center; padding: 20px 0; }
-.tc-confirm .icon { width: 56px; height: 56px; border-radius: 50%; background: var(--available-bg); color: var(--available); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 26px; }
+.tc-confirm .icon { width: 56px; height: 56px; border-radius: 50%; background: var(--brand-bg); color: var(--brand-deep); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 26px; }
 .tc-confirm h2 { font-size: 24px; font-weight: 600; margin: 0 0 8px; }
 .tc-confirm p { color: var(--ink-soft); font-size: 14.5px; max-width: 400px; margin: 0 auto; }
 
