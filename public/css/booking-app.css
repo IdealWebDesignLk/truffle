@@ -69,6 +69,31 @@
 .tc-eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); margin: 0 0 6px; font-weight: 600; }
 .tc-title { font-size: 24px; font-weight: 600; margin: 0 0 6px; }
 .tc-sub { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 20px; }
+
+/* GitHub issue #36 - "Pick a location" heading + the guide preview share a
+   row, so the guide loading in doesn't push the map down (it used to sit
+   above the map as its own block). Wraps on narrow screens instead of
+   squeezing the guide preview. */
+.tc-loc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.tc-loc-header-text { flex: 1 1 220px; min-width: 0; }
+.tc-guide-mini { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 20px; }
+.tc-guide-mini .photo { width: 52px; height: 52px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+.tc-guide-mini .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tc-guide-mini .gm-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+.tc-guide-mini .gm-name { font-size: 13.5px; font-weight: 600; }
+.tc-link-btn { background: none; border: none; padding: 0; margin-top: 2px; color: var(--brand-deep); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; }
+
+/* Full guide bio, opened via the "Read more" button above instead of
+   always taking up space next to the heading. */
+.tc-modal-overlay { position: fixed; inset: 0; background: rgba(20, 16, 28, 0.6); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 100200; }
+.tc-modal-card { position: relative; background: var(--surface); border-radius: var(--radius); padding: 28px; max-width: 360px; width: 100%; max-height: 85vh; overflow-y: auto; text-align: center; }
+.tc-modal-close { position: absolute; top: 10px; right: 12px; background: none; border: none; color: var(--ink-soft); font-size: 26px; line-height: 1; cursor: pointer; padding: 6px; }
+.tc-modal-photo { width: 96px; height: 96px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; overflow: hidden; margin: 0 auto 14px; }
+.tc-modal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tc-modal-photo.zoomable img { cursor: zoom-in; }
+.tc-modal-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin-bottom: 4px; }
+.tc-modal-name { font-weight: 600; font-size: 17px; margin-bottom: 10px; }
+.tc-modal-bio { font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; }
 .tc-selection-summary { display: inline-block; background: var(--brand-bg); color: var(--brand-deep); font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 20px; margin-bottom: 18px; }
 
 .tc-error { background: #FBEAE6; color: var(--danger); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
@@ -93,7 +118,10 @@
    layout above also gives it more room on desktop. */
 .tc-map-wrap { background: var(--surface-dim); border-radius: 12px; padding: 10px 10px 6px; margin-bottom: 14px; }
 /* GitHub issue #31 - "zoom out map a bit": caps trimmed back down from
-   issue #25's sizing now that the guide card also shares this column. */
+   issue #25's sizing. GitHub issue #36 later moved the guide card out of
+   this column entirely (it's now next to the heading, see
+   .tc-loc-header), but these caps are left as-is since #37's "zoom out"
+   was about the map's own viewBox padding, not this container size. */
 .tc-map-svg { width: 100%; height: auto; display: block; max-height: 360px; }
 @media (min-width: 760px) { .tc-map-svg { max-height: 480px; } }
 .tc-map-outline { fill: #EAE3F5; stroke: var(--brand); stroke-width: 1.3; stroke-linejoin: round; }
@@ -104,17 +132,6 @@
 .tc-pin-label { font-size: 13px; font-weight: 500; fill: var(--ink); font-family: inherit; pointer-events: none; }
 .tc-pin-group.selected .tc-pin-label { fill: var(--brand-light); font-weight: 700; }
 .tc-map-caption { font-size: 11px; color: var(--ink-soft); text-align: center; margin: 4px 0 2px; }
-
-/* GitHub issue #26 - bigger, vertical (not round) photo for a stronger
-   personal connection; align-items: stretch makes the photo column match
-   the text column's natural height instead of a fixed size. */
-.tc-employee-card { display: flex; gap: 16px; align-items: stretch; margin: 16px 0 22px; padding: 18px; background: var(--surface-dim); border-radius: 12px; }
-.tc-employee-card .photo { width: 96px; min-height: 120px; border-radius: 10px; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
-.tc-employee-card .photo.zoomable img { cursor: zoom-in; }
-.tc-employee-card .photo img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
-.tc-employee-card .ecf-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin-bottom: 3px; }
-.tc-employee-card .ecf-name { font-weight: 600; font-size: 15.5px; }
-.tc-employee-card .ecf-bio { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
 
 .tc-lightbox-overlay { position: fixed; inset: 0; background: rgba(20, 16, 28, 0.85); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 100200; cursor: zoom-out; }
 .tc-lightbox-overlay img { max-width: 100%; max-height: 90vh; border-radius: 8px; cursor: default; }
@@ -137,18 +154,16 @@
 .tc-svc-card .svc-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ink-soft); }
 .tc-svc-card .svc-price { font-weight: 600; color: var(--ink); }
 
-.tc-cal-heading { font-size: 15px; font-weight: 600; margin: 22px 0 2px; padding-top: 18px; border-top: 1px solid var(--line); }
-
-/* GitHub issue #34 - date boxes read as too big, especially on wider
-   screens where the 7-column grid stretched to fill the full card width.
-   Capping the grid's own max-width (instead of just shrinking each cell)
-   keeps cells square and legible while compacting the calendar as a
-   whole; aspect-ratio was also relaxed slightly so cells aren't as tall. */
-.tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 400px; margin: 0 auto; }
+/* GitHub issue #34 briefly compacted these (capped max-width, shorter
+   cells) because the calendar shared a screen with the ceremony cards.
+   GitHub issue #38 gave the calendar its own step, so it's no longer
+   competing with the cards for room - reverted to filling the full card
+   width again, square cells. */
+.tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .tc-avail-dow { font-size: 11px; color: var(--ink-soft); text-align: center; padding-bottom: 4px; }
-.tc-avail-day { aspect-ratio: 1 / 0.9; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
-.tc-avail-day .d { font-size: 13px; font-weight: 600; }
-.tc-avail-day .status { font-size: 8px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+.tc-avail-day { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
+.tc-avail-day .d { font-size: 14px; font-weight: 600; }
+.tc-avail-day .status { font-size: 8.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
 /* GitHub issue #33 - "N left" was too small to read at a glance next to
    the status label; bumped up and given full opacity. */
 .tc-avail-day .rem { font-size: 10.5px; font-weight: 600; opacity: 1; }
@@ -157,7 +172,7 @@
 .tc-avail-day.empty { visibility: hidden; }
 .tc-avail-day.past { background: transparent; color: var(--ink-soft); opacity: .4; cursor: default; }
 .tc-avail-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; }
-@media (max-width: 480px) { .tc-avail-cal { max-width: none; } .tc-avail-day { font-size: 10px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } .tc-avail-day .rem { font-size: 9px; } }
+@media (max-width: 480px) { .tc-avail-day { font-size: 10.5px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } .tc-avail-day .rem { font-size: 9px; } }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
 .tc-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

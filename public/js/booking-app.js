@@ -46,13 +46,18 @@
 		info: { firstName: '', lastName: '', email: '', phone: '' },
 		fieldErrors: {},
 		lightboxUrl: null,
+		guideInfoOpen: false,
 		submitting: false,
 		error: null,
 	};
 
 	function getActiveSteps() {
 		var svc   = getService( state.serviceId );
-		var steps = [ 'location', 'availability' ];
+		// GitHub issue #38 - the calendar now gets its own step instead of
+		// appearing directly underneath the ceremony cards on the same
+		// screen, so picking a ceremony and picking a date each get their
+		// own dedicated screen (and step-progress segment).
+		var steps = [ 'location', 'service', 'calendar' ];
 		if ( svc && svc.allow_party ) {
 			steps.push( 'party' );
 		}
@@ -298,15 +303,13 @@
 
 	function setStep( key ) {
 		state.step = key;
-		// GitHub issue #21 - the availability step now leads with a ceremony
-		// picker, so default to the first one instead of requiring a grid
-		// cell click to imply the service (that used to pick service+date
-		// together in one click).
-		if ( 'availability' === key && ! state.serviceId && state.services.length ) {
+		// GitHub issue #21 - the service step defaults to the first ceremony
+		// instead of requiring a click to imply the service.
+		if ( 'service' === key && ! state.serviceId && state.services.length ) {
 			state.serviceId = state.services[ 0 ].id;
 		}
 		render();
-		if ( 'availability' === key ) {
+		if ( 'calendar' === key ) {
 			loadGrid();
 		}
 		window.scrollTo( { top: root.offsetTop - 20, behavior: 'smooth' } );
@@ -322,7 +325,8 @@
 		var body = '';
 		switch ( state.step ) {
 			case 'location': body = renderLocation(); break;
-			case 'availability': body = renderGrid(); break;
+			case 'service': body = renderServicePicker(); break;
+			case 'calendar': body = renderCalendarStep(); break;
 			case 'party': body = renderParty(); break;
 			case 'extras': body = renderExtras(); break;
 			case 'guests': body = renderGuests(); break;
@@ -332,7 +336,7 @@
 
 		root.innerHTML = '<div class="tc-progress">' + progress + '</div><div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
-			body + '</div>' + renderLightbox();
+			body + '</div>' + renderLightbox() + renderGuideInfoModal();
 
 		attachHandlers();
 	}
@@ -348,15 +352,58 @@
 			'</div>';
 	}
 
+	// GitHub issue #36 - the full guide card used to sit above the map and
+	// pushed it down whenever a guide loaded. It's now a compact avatar +
+	// name next to the "Pick a location" heading instead, with the full
+	// bio available on demand here rather than always taking up space.
+	function renderGuideInfoModal() {
+		if ( ! state.guideInfoOpen || ! state.guide ) return '';
+		var g          = state.guide;
+		var photoInner = g.photo
+			? '<img src="' + escapeAttr( g.photo ) + '" alt="' + escapeAttr( g.name ) + '" data-photo-zoom="' + escapeAttr( g.photo ) + '">'
+			: escapeHtml( initials( g.name ) );
+		return '<div class="tc-modal-overlay" id="tc-guide-modal">' +
+			'<div class="tc-modal-card">' +
+			'<button type="button" class="tc-modal-close" id="tc-guide-modal-close" aria-label="Close">&times;</button>' +
+			'<div class="tc-modal-photo' + ( g.photo ? ' zoomable' : '' ) + '">' + photoInner + '</div>' +
+			'<div class="tc-modal-label">Your guide at this location</div>' +
+			'<div class="tc-modal-name">' + escapeHtml( g.name ) + '</div>' +
+			'<div class="tc-modal-bio">' + escapeHtml( g.bio || '' ) + '</div>' +
+			'</div></div>';
+	}
+
 	function renderLocation() {
 		var loc = getLocation( state.locationId );
+		// GitHub issue #37 - the outer viewBox is padded out beyond the
+		// map's own 320x400 coordinate space (which NL_OUTLINE/MERC_SCALE/
+		// MERC_TRANSLATE are fitted to - see PROJECT_NOTES.md, don't touch
+		// those without refitting all three together). This is a display
+		// -level "zoom out": it doesn't move anything, it just shows more
+		// empty margin around the same map, so a pin label near the coast
+		// (e.g. the NE edge) has room to render instead of getting clipped
+		// by the SVG's edge. Because .tc-map-svg's width/height:auto keeps
+		// the same aspect ratio as this viewBox, padding both dimensions
+		// equally also shrinks the whole map (labels included) on screen -
+		// which doubles as "make city names little bit smaller".
+		var padX = 24, padY = 30;
+		var viewBox = ( -padX ) + ' ' + ( -padY ) + ' ' + ( 320 + 2 * padX ) + ' ' + ( 400 + 2 * padY );
 		var pins = state.locations.map( function ( l ) {
 			if ( ! l.lat || ! l.lng ) return '';
 			var p        = project( l.lng, l.lat );
 			var selected = state.locationId === l.id;
+			// GitHub issue #37 - padding the viewBox alone isn't enough for a
+			// pin near the coastline on the right/east side: the label text
+			// runs further right than the pin itself, easily past even a
+			// padded edge for a longer place name (this was the actual cause
+			// of the "N" seen cut down to one letter). Flip the label to the
+			// LEFT of the pin once it's in roughly the rightmost quarter of
+			// the map's own (unpadded) coordinate space, instead of relying
+			// on padding to outrun arbitrarily long names.
+			var flip     = p.x > 230;
+			var labelX   = flip ? ( p.x - 11 ) : ( p.x + 11 );
 			return '<g class="tc-pin-group' + ( selected ? ' selected' : '' ) + '" data-loc="' + l.id + '">' +
 				'<circle class="tc-pin" cx="' + p.x + '" cy="' + p.y + '" r="' + ( selected ? 9 : 6.5 ) + '"></circle>' +
-				'<text class="tc-pin-label" x="' + ( p.x + 11 ) + '" y="' + p.y + '" dominant-baseline="middle">' + escapeHtml( l.name.split( ' (' )[ 0 ] ) + '</text>' +
+				'<text class="tc-pin-label" x="' + labelX + '" y="' + p.y + '" dominant-baseline="middle"' + ( flip ? ' text-anchor="end"' : '' ) + '>' + escapeHtml( l.name.split( ' (' )[ 0 ] ) + '</text>' +
 				'</g>';
 		} ).join( '' );
 
@@ -368,34 +415,38 @@
 				'</div>';
 		} ).join( '' );
 
-		var employeeCard = '';
+		// GitHub issue #36 - the full guide card used to live above the map
+		// and pushed it down every time a guide loaded in. It's now a
+		// compact circular-photo + name next to the heading instead (same
+		// row, doesn't affect the map's position), with a "Read more"
+		// button opening the full bio as a popup (renderGuideInfoModal())
+		// rather than trying to also fit the bio text in that row.
+		var guideMini = '';
 		if ( loc && state.guide ) {
-			// GitHub issue #26 - bigger, vertical (not round) photo so it
-			// reads as a real portrait rather than an avatar; clicking it
-			// opens a full-size lightbox (see renderLightbox()).
 			var photoInner = state.guide.photo
-				? '<img src="' + escapeAttr( state.guide.photo ) + '" alt="' + escapeAttr( state.guide.name ) + '" data-photo-zoom="' + escapeAttr( state.guide.photo ) + '">'
+				? '<img src="' + escapeAttr( state.guide.photo ) + '" alt="' + escapeAttr( state.guide.name ) + '">'
 				: escapeHtml( initials( state.guide.name ) );
-			employeeCard = '<div class="tc-employee-card">' +
-				'<div class="photo' + ( state.guide.photo ? ' zoomable' : '' ) + '">' + photoInner + '</div>' +
-				'<div><div class="ecf-label">Your guide at this location</div><div class="ecf-name">' + escapeHtml( state.guide.name ) + '</div><div class="ecf-bio">' + escapeHtml( state.guide.bio || '' ) + '</div></div>' +
+			guideMini = '<div class="tc-guide-mini">' +
+				'<div class="photo">' + photoInner + '</div>' +
+				'<div class="gm-text"><div class="gm-label">Your guide</div><div class="gm-name">' + escapeHtml( state.guide.name ) + '</div>' +
+				'<button type="button" class="tc-link-btn" id="tc-guide-readmore">Read more</button></div>' +
 				'</div>';
 		}
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
+		return '<div class="tc-loc-header">' +
+			'<div class="tc-loc-header-text"><p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
 			'<h2 class="tc-title">Pick a location</h2>' +
-			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p>' +
+			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p></div>' +
+			guideMini +
+			'</div>' +
 			// GitHub issue #24 - map/list wrapped as two columns so CSS can
 			// put the map on the right and the list on the left on desktop
 			// (row-reverse, so mobile's stacked map-then-list DOM order is
 			// untouched); issue #25 - larger .tc-map-svg cap lets the map
-			// (and its pin labels, which scale with the SVG) grow bigger in
-			// that wider column. Issue #31 - guide details now render above
-			// the map (was below it) so they're visible without scrolling
-			// past the map first; map cap sized back down slightly too.
+			// grow bigger in that wider column.
 			'<div class="tc-loc-layout">' +
-			'<div class="tc-loc-map-col">' + employeeCard +
-			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="0 0 320 400" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
+			'<div class="tc-loc-map-col">' +
+			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="' + viewBox + '" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
 			'<path class="tc-map-outline" d="' + NL_OUTLINE + '"></path>' + pins + '</svg>' +
 			'<p class="tc-map-caption">Tap a pin, or pick from the list</p></div>' +
 			'</div>' +
@@ -407,7 +458,9 @@
 	// GitHub issue #21 - "pick a ceremony and date in one click on a 7-day
 	// table showing every service as a row" was hard to read, especially
 	// on mobile with several services. Replaced with: pick a ceremony from
-	// a card grid, then a single-service month calendar appears below it.
+	// a card grid, then (GitHub issue #38 - now its own step rather than
+	// appearing directly below the cards on the same screen) a
+	// single-service month calendar.
 	function serviceDurationLabel( svc ) {
 		var d = Math.max( 1, svc.duration_days );
 		return d + ( d > 1 ? ' days' : ' day' );
@@ -420,9 +473,8 @@
 		return { first: first, last: last };
 	}
 
-	function renderGrid() {
-		var loc     = getLocation( state.locationId );
-		var service = getService( state.serviceId );
+	function renderServicePicker() {
+		var loc = getLocation( state.locationId );
 
 		var cards = state.services.map( function ( svc ) {
 			var selected = svc.id === state.serviceId;
@@ -432,12 +484,21 @@
 				'</div>';
 		} ).join( '' );
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'availability' ) + '</p>' +
+		return '<p class="tc-eyebrow">' + stepLabel( 'service' ) + '</p>' +
 			'<h2 class="tc-title">Availability at ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
-			'<p class="tc-sub">First choose a ceremony. Its available dates will appear directly below.</p>' +
-			'<p class="tc-section-label">Choose a ceremony</p>' +
+			'<p class="tc-sub">Choose a ceremony to see its available dates next.</p>' +
 			'<div class="tc-svc-cards">' + cards + '</div>' +
-			( service ? renderAvailabilityCalendar( service ) : '' ) +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button>' +
+			'<button class="tc-btn primary" id="tc-next"' + ( state.serviceId ? '' : ' disabled' ) + '>Continue</button></div>';
+	}
+
+	function renderCalendarStep() {
+		var service = getService( state.serviceId );
+		if ( ! service ) return '<p>Please go back and choose a ceremony.</p>';
+		return '<p class="tc-eyebrow">' + stepLabel( 'calendar' ) + '</p>' +
+			'<h2 class="tc-title">Choose a date</h2>' +
+			'<p class="tc-sub">Available dates for ' + escapeHtml( service.name ) + '. Select an open day to continue.</p>' +
+			renderAvailabilityCalendar( service ) +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
 	}
 
@@ -472,9 +533,7 @@
 		var minMonth = 0;
 		var maxMonth = 6; // ~6 months ahead, same booking-horizon idea as the old 7-week cap
 
-		return '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
-			'<p class="tc-sub">Select an open day to continue.</p>' +
-			'<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190</button>' +
+		return '<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190</button>' +
 			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>\u2192</button></div>' +
 			( state.gridLoading ? '<p>Loading availability\u2026</p>' :
 				'<div class="tc-avail-cal">' +
@@ -642,14 +701,29 @@
 			};
 		}
 
+		// GitHub issue #36 - "Read more" opens the full guide bio as a popup.
+		var guideReadMore = document.getElementById( 'tc-guide-readmore' );
+		if ( guideReadMore ) guideReadMore.onclick = function () { state.guideInfoOpen = true; render(); };
+		var guideModal = document.getElementById( 'tc-guide-modal' );
+		if ( guideModal ) {
+			guideModal.onclick = function ( e ) {
+				if ( e.target === guideModal || e.target.id === 'tc-guide-modal-close' ) {
+					state.guideInfoOpen = false;
+					render();
+				}
+			};
+		}
+
 		var prevMonth = document.getElementById( 'tc-prev-month' );
 		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadGrid(); };
 		var nextMonth = document.getElementById( 'tc-next-month' );
 		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); };
 
-		// GitHub issue #21 - picking a ceremony card no longer implies a
-		// date; it just swaps which service's calendar is shown below, and
-		// stays on this step.
+		// GitHub issue #21/#38 - picking a ceremony card no longer implies a
+		// date, and (since #38) its calendar now lives on its own step
+		// rather than loading live underneath the cards - just record the
+		// selection here; loadGrid() runs once the customer continues to
+		// the calendar step (see setStep()).
 		root.querySelectorAll( '[data-svc-select]' ).forEach( function ( el ) {
 			el.onclick = function () {
 				var id = parseInt( el.dataset.svcSelect, 10 );
@@ -660,7 +734,7 @@
 				state.extraQty   = {};
 				state.partySize  = 1;
 				state.guests     = [];
-				loadGrid();
+				render();
 			};
 		} );
 
@@ -736,6 +810,7 @@
 		// fresh request per click - that per-click fetch was visibly slow
 		// (see GitHub issue #4).
 		state.guide = state.guidesByLocation[ id ] || null;
+		state.guideInfoOpen = false;
 		render();
 	}
 
@@ -817,8 +892,12 @@
 	}
 
 	document.addEventListener( 'keydown', function ( e ) {
-		if ( 'Escape' === e.key && state.lightboxUrl ) {
+		if ( 'Escape' !== e.key ) return;
+		if ( state.lightboxUrl ) {
 			state.lightboxUrl = null;
+			render();
+		} else if ( state.guideInfoOpen ) {
+			state.guideInfoOpen = false;
 			render();
 		}
 	} );
