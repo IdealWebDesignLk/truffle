@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.8.0
+Stable tag: 0.9.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,37 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.9.0 =
+* Booking review now shows the main booker's own name/email/phone, not
+  just guest names. Resolves GitHub issue #30.
+* A "Ceremony · Date" summary now shows above the Extras step, so the
+  selection made on the calendar doesn't disappear from view. Resolves
+  GitHub issue #29.
+* Bolded the "earlier"/"later" navigation buttons. Resolves GitHub
+  issue #28.
+* Location address is no longer shown to customers, just the location
+  name. Resolves GitHub issue #27.
+* Brand accent (buttons, progress bar, selection borders/focus, map
+  pins) switched from green to purple to match Truffle Ceremonie's
+  branding; the availability calendar's available/almost-full/not
+  available colors deliberately stay green/amber/grey, since that's a
+  separate, widely understood convention. Resolves GitHub issue #22.
+* Redesigned the availability step: instead of one 7-day table listing
+  every ceremony as a row, pick a ceremony from cards first, then see
+  that ceremony's own month calendar (with remaining-seat counts on
+  shared dates). Resolves GitHub issue #21.
+* On desktop, the location map now sits to the right of the location
+  list instead of above it. Resolves GitHub issue #24.
+* The location map can now grow substantially larger within its
+  container, so it (and its labels) are easier to read. Resolves
+  GitHub issue #25.
+* Guide photos are bigger, vertical instead of round, and open a
+  full-size view when clicked. Resolves GitHub issue #26.
+* Regenerated the Netherlands map outline from real, full-detail
+  coastline data - the mainland is far more accurately shaped, and the
+  Wadden Islands (Texel, Vlieland, Terschelling, Ameland,
+  Schiermonnikoog) are now included. Resolves GitHub issue #23.
 
 = 0.8.0 =
 * Fixed "how many people are you bringing" letting a customer select

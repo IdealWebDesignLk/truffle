@@ -201,22 +201,47 @@ is the confirmation, since payment happens there.
 ### The map
 
 The Netherlands outline (`NL_OUTLINE` in `booking-app.js`) and the
-projection constants (`MERC_SCALE`, `MERC_TRANSLATE`) came from real
-Natural Earth boundary data (via the `world-atlas` / `d3-geo` npm packages,
-public domain), not hand-drawn - an earlier hand-drawn version looked
-wrong and was replaced for exactly that reason. The Netherlands entry in
-that dataset includes Aruba/Curacao/Sint Maarten (Kingdom of the
-Netherlands), which had to be filtered out by longitude before generating
-the outline.
+projection constants (`MERC_SCALE`, `MERC_TRANSLATE`) come from real
+Natural Earth boundary data (`world-atlas`'s `countries-10m.json`, public
+domain), not hand-drawn - an earlier hand-drawn version looked wrong and
+was replaced for exactly that reason. The Netherlands entry in that
+dataset includes Aruba/Curacao/Sint Maarten (Kingdom of the Netherlands),
+which are filtered out by longitude before generating the outline.
+
+**Regenerated in 0.9.0 (GitHub issue #23)** - the version shipped before
+that point was ALSO nominally from this same Natural Earth source, but had
+been run through `topojson-simplify` at a tolerance aggressive enough to
+both lose most of the mainland's coastline detail AND drop every island
+polygon entirely (a known simplify gotcha: over-aggressive tolerance can
+delete small landmasses outright, not just smooth them). The client
+correctly called this out as "not real looking" and missing islands. The
+current outline skips simplification and decodes the full-detail TopoJSON
+directly (no Node/d3-geo available in this environment, so this was done
+with a small Python script implementing TopoJSON's arc delta-decoding by
+hand, then a manual `fitExtent`-equivalent: project every kept point with
+the unscaled Mercator formula, take the bounding box, and solve
+scale/translate to center it in the 320x400 viewBox with padding). Kept 9
+of the Netherlands' 12 polygons after the longitude filter: the mainland
+(592 points, vs. ~90 before) plus Texel, Vlieland, Terschelling, Ameland,
+Schiermonnikoog, two small Zeeland delta landmasses, and one tiny
+uninhabited islet near Rottumeroog.
 
 Pin positions are computed live in the browser from each Location's
 lat/lng (set in the admin meta box) using the same Mercator formula the
 outline was generated with, so **any** location works automatically - not
-just the ones used during prototyping. If the map ever needs to be
-regenerated (e.g. higher detail, or a different region), the generation
-script approach is: `world-atlas` countries-10m.json -> filter to the
-target country -> `topojson-simplify` -> `d3-geo` `geoMercator().fitExtent()`
--> `geoPath()`. Don't hand-draw a country outline again.
+just the ones used during prototyping. **MERC_SCALE/MERC_TRANSLATE and
+NL_OUTLINE are coupled** - they were fit together to this specific shape's
+bounding box, so if the outline is ever regenerated again, refit and
+replace both together, not just the path. If it ever needs regenerating:
+fetch `https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json`,
+find the Netherlands feature (topojson `id` "528") in
+`objects.countries.geometries`, decode its arcs (delta-decode using
+`transform.scale`/`transform.translate`, then resolve each polygon's ring
+arc-indices - a negative index `i` means arc `~i` reversed), drop any
+polygon whose points have longitude < 0 (Caribbean territories), then fit
+to the viewBox as described above. Don't hand-draw a country outline
+again, and don't run it through aggressive simplification without
+checking that every intended island survived.
 
 ## Testing performed
 
