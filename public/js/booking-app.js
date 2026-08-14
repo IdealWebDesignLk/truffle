@@ -400,9 +400,10 @@
 			// the map's own (unpadded) coordinate space, instead of relying
 			// on padding to outrun arbitrarily long names.
 			var flip     = p.x > 230;
-			var labelX   = flip ? ( p.x - 11 ) : ( p.x + 11 );
+			// GitHub issue #40 - dot and label text both sized down a little.
+			var labelX   = flip ? ( p.x - 9 ) : ( p.x + 9 );
 			return '<g class="tc-pin-group' + ( selected ? ' selected' : '' ) + '" data-loc="' + l.id + '">' +
-				'<circle class="tc-pin" cx="' + p.x + '" cy="' + p.y + '" r="' + ( selected ? 9 : 6.5 ) + '"></circle>' +
+				'<circle class="tc-pin" cx="' + p.x + '" cy="' + p.y + '" r="' + ( selected ? 7.5 : 5.5 ) + '"></circle>' +
 				'<text class="tc-pin-label" x="' + labelX + '" y="' + p.y + '" dominant-baseline="middle"' + ( flip ? ' text-anchor="end"' : '' ) + '>' + escapeHtml( l.name.split( ' (' )[ 0 ] ) + '</text>' +
 				'</g>';
 		} ).join( '' );
@@ -421,6 +422,9 @@
 		// row, doesn't affect the map's position), with a "Read more"
 		// button opening the full bio as a popup (renderGuideInfoModal())
 		// rather than trying to also fit the bio text in that row.
+		// GitHub issue #39 - also show a short bio preview (clamped to two
+		// lines via CSS, not truncated here) alongside the "Read more" link,
+		// instead of name-only.
 		var guideMini = '';
 		if ( loc && state.guide ) {
 			var photoInner = state.guide.photo
@@ -429,6 +433,7 @@
 			guideMini = '<div class="tc-guide-mini">' +
 				'<div class="photo">' + photoInner + '</div>' +
 				'<div class="gm-text"><div class="gm-label">Your guide</div><div class="gm-name">' + escapeHtml( state.guide.name ) + '</div>' +
+				( state.guide.bio ? '<div class="gm-bio">' + escapeHtml( state.guide.bio ) + '</div>' : '' ) +
 				'<button type="button" class="tc-link-btn" id="tc-guide-readmore">Read more</button></div>' +
 				'</div>';
 		}

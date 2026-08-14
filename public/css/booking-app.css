@@ -76,12 +76,28 @@
    squeezing the guide preview. */
 .tc-loc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
 .tc-loc-header-text { flex: 1 1 220px; min-width: 0; }
-.tc-guide-mini { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 20px; }
+/* GitHub issue #39 - a long guide name had nothing capping the mini
+   card's width, so it could run past the card's edge instead of
+   wrapping. max-width + min-width:0 on the text column bounds it and
+   lets gm-name wrap normally; a short bio snippet (clamped to 2 lines)
+   was also added between the name and "Read more" per the issue. */
+.tc-guide-mini { display: flex; align-items: flex-start; gap: 10px; flex-shrink: 0; max-width: 230px; margin-bottom: 20px; }
 .tc-guide-mini .photo { width: 52px; height: 52px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
 .tc-guide-mini .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tc-guide-mini .gm-text { min-width: 0; }
 .tc-guide-mini .gm-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
-.tc-guide-mini .gm-name { font-size: 13.5px; font-weight: 600; }
-.tc-link-btn { background: none; border: none; padding: 0; margin-top: 2px; color: var(--brand-deep); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.tc-guide-mini .gm-name { font-size: 13.5px; font-weight: 600; overflow-wrap: break-word; }
+.tc-guide-mini .gm-bio { font-size: 11.5px; line-height: 1.35; color: var(--ink-soft); margin: 3px 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* GitHub issue #41 - "hover color is wrong and it has bad padding when
+   hovering": both were native OS/browser <button> chrome bleeding through
+   on :hover/:focus (padding from ::-moz-focus-inner on Firefox, a default
+   highlight color on other browsers) since only the base state was
+   styled. -webkit-appearance/appearance:none strips that chrome, and the
+   :hover/:focus rule plus the ::-moz-focus-inner reset pin the button to
+   this design's own colors and zero padding in every state. */
+.tc-link-btn { -webkit-appearance: none; appearance: none; background: none; border: none; padding: 0; margin-top: 2px; color: var(--brand-deep); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; text-decoration: underline; }
+.tc-link-btn:hover, .tc-link-btn:focus { background: none; padding: 0; color: var(--brand); }
+.tc-link-btn::-moz-focus-inner { border: 0; padding: 0; }
 
 /* Full guide bio, opened via the "Read more" button above instead of
    always taking up space next to the heading. */
@@ -129,7 +145,10 @@
 .tc-pin { fill: var(--brand); stroke: #FFFFFF; stroke-width: 2; transition: r .12s ease, fill .12s ease; }
 .tc-pin-group:hover .tc-pin { fill: var(--brand-deep); }
 .tc-pin-group.selected .tc-pin { fill: var(--brand-light); }
-.tc-pin-label { font-size: 13px; font-weight: 500; fill: var(--ink); font-family: inherit; pointer-events: none; }
+/* GitHub issue #40 - "reduce the size of map location text and dot a
+   little bit" - label font-size down from 13px, dot radii (see the
+   `r` attribute in booking-app.js's pins map) down from 9/6.5. */
+.tc-pin-label { font-size: 11.5px; font-weight: 500; fill: var(--ink); font-family: inherit; pointer-events: none; }
 .tc-pin-group.selected .tc-pin-label { fill: var(--brand-light); font-weight: 700; }
 .tc-map-caption { font-size: 11px; color: var(--ink-soft); text-align: center; margin: 4px 0 2px; }
 
