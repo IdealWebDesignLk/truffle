@@ -417,14 +417,14 @@
 		} ).join( '' );
 
 		// GitHub issue #36 - the full guide card used to live above the map
-		// and pushed it down every time a guide loaded in. It's now a
-		// compact circular-photo + name next to the heading instead (same
-		// row, doesn't affect the map's position), with a "Read more"
-		// button opening the full bio as a popup (renderGuideInfoModal())
-		// rather than trying to also fit the bio text in that row.
-		// GitHub issue #39 - also show a short bio preview (clamped to two
-		// lines via CSS, not truncated here) alongside the "Read more" link,
-		// instead of name-only.
+		// and pushed it down every time a guide loaded in, so it moved next
+		// to the heading instead. GitHub issue #42 - stays in that same row
+		// as "Pick a location", but its column now matches the map
+		// column's own width/position below (.tc-loc-header uses the same
+		// flex:1 1 0 two-column split, same gap, as .tc-loc-layout - see
+		// the CSS - so the two right-hand columns line up exactly), instead
+		// of a small compact box. Kept the "Read more" popup
+		// (renderGuideInfoModal()) and the bio preview from #39.
 		var guideMini = '';
 		if ( loc && state.guide ) {
 			var photoInner = state.guide.photo

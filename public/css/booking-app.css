@@ -71,23 +71,27 @@
 .tc-sub { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 20px; }
 
 /* GitHub issue #36 - "Pick a location" heading + the guide preview share a
-   row, so the guide loading in doesn't push the map down (it used to sit
-   above the map as its own block). Wraps on narrow screens instead of
-   squeezing the guide preview. */
-.tc-loc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
-.tc-loc-header-text { flex: 1 1 220px; min-width: 0; }
+   row, so the guide loading in doesn't push the map down. GitHub issue
+   #42 - that row now uses the exact same flex:1 1 0 two-column split (and
+   gap) as .tc-loc-layout below, so the guide column lines up with the map
+   column: same width, same left edge - instead of a small compact box. */
+.tc-loc-header { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+@media (min-width: 760px) {
+	.tc-loc-header { flex-direction: row; align-items: flex-start; }
+	.tc-loc-header-text, .tc-loc-header .tc-guide-mini { flex: 1 1 0; min-width: 0; }
+}
+.tc-guide-mini { display: flex; align-items: center; gap: 14px; background: var(--surface-dim); border-radius: 12px; padding: 14px 16px; }
+.tc-guide-mini .photo { width: 56px; height: 56px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+.tc-guide-mini .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* GitHub issue #39 - a long guide name had nothing capping the mini
    card's width, so it could run past the card's edge instead of
-   wrapping. max-width + min-width:0 on the text column bounds it and
-   lets gm-name wrap normally; a short bio snippet (clamped to 2 lines)
-   was also added between the name and "Read more" per the issue. */
-.tc-guide-mini { display: flex; align-items: flex-start; gap: 10px; flex-shrink: 0; max-width: 230px; margin-bottom: 20px; }
-.tc-guide-mini .photo { width: 52px; height: 52px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
-.tc-guide-mini .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tc-guide-mini .gm-text { min-width: 0; }
+   wrapping. min-width:0 lets gm-name wrap normally; a short bio snippet
+   (clamped to 2 lines) was also added between the name and "Read more"
+   per the issue. */
+.tc-guide-mini .gm-text { min-width: 0; flex: 1 1 auto; }
 .tc-guide-mini .gm-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
-.tc-guide-mini .gm-name { font-size: 13.5px; font-weight: 600; overflow-wrap: break-word; }
-.tc-guide-mini .gm-bio { font-size: 11.5px; line-height: 1.35; color: var(--ink-soft); margin: 3px 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tc-guide-mini .gm-name { font-size: 14px; font-weight: 600; overflow-wrap: break-word; }
+.tc-guide-mini .gm-bio { font-size: 12px; line-height: 1.4; color: var(--ink-soft); margin: 3px 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* GitHub issue #41 - "hover color is wrong and it has bad padding when
    hovering": both were native OS/browser <button> chrome bleeding through
    on :hover/:focus (padding from ::-moz-focus-inner on Firefox, a default
@@ -134,10 +138,9 @@
    layout above also gives it more room on desktop. */
 .tc-map-wrap { background: var(--surface-dim); border-radius: 12px; padding: 10px 10px 6px; margin-bottom: 14px; }
 /* GitHub issue #31 - "zoom out map a bit": caps trimmed back down from
-   issue #25's sizing. GitHub issue #36 later moved the guide card out of
-   this column entirely (it's now next to the heading, see
-   .tc-loc-header), but these caps are left as-is since #37's "zoom out"
-   was about the map's own viewBox padding, not this container size. */
+   issue #25's sizing. Left as-is through #36/#42's guide-card placement
+   changes and #37's "zoom out", since none of those touched this
+   container's own size. */
 .tc-map-svg { width: 100%; height: auto; display: block; max-height: 360px; }
 @media (min-width: 760px) { .tc-map-svg { max-height: 480px; } }
 .tc-map-outline { fill: #EAE3F5; stroke: var(--brand); stroke-width: 1.3; stroke-linejoin: round; }
