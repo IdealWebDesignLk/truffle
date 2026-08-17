@@ -53,11 +53,12 @@
 
 	function getActiveSteps() {
 		var svc   = getService( state.serviceId );
-		// GitHub issue #38 - the calendar now gets its own step instead of
-		// appearing directly underneath the ceremony cards on the same
-		// screen, so picking a ceremony and picking a date each get their
-		// own dedicated screen (and step-progress segment).
-		var steps = [ 'location', 'service', 'calendar' ];
+		// GitHub issue #38 previously split this into 'service' then
+		// 'calendar' as two separate steps; GitHub issue #42 puts them back
+		// in one view ("2nd and 3rd step to be in one view") - ceremony
+		// cards and that ceremony's calendar both render on the 'service'
+		// step again, see renderServicePicker().
+		var steps = [ 'location', 'service' ];
 		if ( svc && svc.allow_party ) {
 			steps.push( 'party' );
 		}
@@ -304,12 +305,14 @@
 	function setStep( key ) {
 		state.step = key;
 		// GitHub issue #21 - the service step defaults to the first ceremony
-		// instead of requiring a click to imply the service.
+		// instead of requiring a click to imply the service; GitHub issue
+		// #42 - since the calendar is back on this same step, load its
+		// grid right away too instead of waiting for a separate step.
 		if ( 'service' === key && ! state.serviceId && state.services.length ) {
 			state.serviceId = state.services[ 0 ].id;
 		}
 		render();
-		if ( 'calendar' === key ) {
+		if ( 'service' === key ) {
 			loadGrid();
 		}
 		window.scrollTo( { top: root.offsetTop - 20, behavior: 'smooth' } );
@@ -326,7 +329,6 @@
 		switch ( state.step ) {
 			case 'location': body = renderLocation(); break;
 			case 'service': body = renderServicePicker(); break;
-			case 'calendar': body = renderCalendarStep(); break;
 			case 'party': body = renderParty(); break;
 			case 'extras': body = renderExtras(); break;
 			case 'guests': body = renderGuests(); break;
@@ -463,9 +465,9 @@
 	// GitHub issue #21 - "pick a ceremony and date in one click on a 7-day
 	// table showing every service as a row" was hard to read, especially
 	// on mobile with several services. Replaced with: pick a ceremony from
-	// a card grid, then (GitHub issue #38 - now its own step rather than
-	// appearing directly below the cards on the same screen) a
-	// single-service month calendar.
+	// a card grid, then a single-service month calendar appears below it.
+	// (GitHub issue #38 briefly split these into two separate steps;
+	// GitHub issue #42 merged them back into one view.)
 	function serviceDurationLabel( svc ) {
 		var d = Math.max( 1, svc.duration_days );
 		return d + ( d > 1 ? ' days' : ' day' );
@@ -479,7 +481,8 @@
 	}
 
 	function renderServicePicker() {
-		var loc = getLocation( state.locationId );
+		var loc     = getLocation( state.locationId );
+		var service = getService( state.serviceId );
 
 		var cards = state.services.map( function ( svc ) {
 			var selected = svc.id === state.serviceId;
@@ -491,19 +494,12 @@
 
 		return '<p class="tc-eyebrow">' + stepLabel( 'service' ) + '</p>' +
 			'<h2 class="tc-title">Availability at ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
-			'<p class="tc-sub">Choose a ceremony to see its available dates next.</p>' +
+			'<p class="tc-sub">First choose a ceremony. Its available dates will appear directly below.</p>' +
+			'<p class="tc-section-label">Choose a ceremony</p>' +
 			'<div class="tc-svc-cards">' + cards + '</div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button>' +
-			'<button class="tc-btn primary" id="tc-next"' + ( state.serviceId ? '' : ' disabled' ) + '>Continue</button></div>';
-	}
-
-	function renderCalendarStep() {
-		var service = getService( state.serviceId );
-		if ( ! service ) return '<p>Please go back and choose a ceremony.</p>';
-		return '<p class="tc-eyebrow">' + stepLabel( 'calendar' ) + '</p>' +
-			'<h2 class="tc-title">Choose a date</h2>' +
-			'<p class="tc-sub">Available dates for ' + escapeHtml( service.name ) + '. Select an open day to continue.</p>' +
-			renderAvailabilityCalendar( service ) +
+			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
+				'<p class="tc-sub">Select an open day to continue.</p>' +
+				renderAvailabilityCalendar( service ) : '' ) +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
 	}
 
@@ -724,11 +720,10 @@
 		var nextMonth = document.getElementById( 'tc-next-month' );
 		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); };
 
-		// GitHub issue #21/#38 - picking a ceremony card no longer implies a
-		// date, and (since #38) its calendar now lives on its own step
-		// rather than loading live underneath the cards - just record the
-		// selection here; loadGrid() runs once the customer continues to
-		// the calendar step (see setStep()).
+		// GitHub issue #21 - picking a ceremony card no longer implies a
+		// date; it just swaps which service's calendar is shown below, and
+		// stays on this step (GitHub issue #42 - service cards and the
+		// calendar are back on one view together).
 		root.querySelectorAll( '[data-svc-select]' ).forEach( function ( el ) {
 			el.onclick = function () {
 				var id = parseInt( el.dataset.svcSelect, 10 );
@@ -739,7 +734,7 @@
 				state.extraQty   = {};
 				state.partySize  = 1;
 				state.guests     = [];
-				render();
+				loadGrid();
 			};
 		} );
 

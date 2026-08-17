@@ -182,11 +182,14 @@
 .tc-svc-card .svc-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ink-soft); }
 .tc-svc-card .svc-price { font-weight: 600; color: var(--ink); }
 
+.tc-cal-heading { font-size: 15px; font-weight: 600; margin: 22px 0 2px; padding-top: 18px; border-top: 1px solid var(--line); }
+
 /* GitHub issue #34 briefly compacted these (capped max-width, shorter
    cells) because the calendar shared a screen with the ceremony cards.
-   GitHub issue #38 gave the calendar its own step, so it's no longer
-   competing with the cards for room - reverted to filling the full card
-   width again, square cells. */
+   GitHub issue #38 gave the calendar its own step (no longer competing
+   with the cards for room) and this was reverted to full width; #42 put
+   the calendar back on the same screen as the cards, but full width is
+   left as-is since the size wasn't part of that request. */
 .tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .tc-avail-dow { font-size: 11px; color: var(--ink-soft); text-align: center; padding-bottom: 4px; }
 .tc-avail-day { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
