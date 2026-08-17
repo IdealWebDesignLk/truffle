@@ -37,7 +37,11 @@
   --danger: #A3402E;
   --radius: 14px;
 
-  max-width: 860px;
+  /* Widened to match the site's normal container width (1140px), mainly
+     so the availability table (a full month of day columns, see
+     renderAvailabilityTable() in booking-app.js) needs less horizontal
+     scrolling. */
+  max-width: 1140px;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
   color: var(--ink);
