@@ -386,11 +386,24 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_not_available', __( 'That date is no longer available. Please pick another date.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
+		// "Bring anyone with you" (GitHub issue #6) party size is computed
+		// up front now: GitHub issue #48 lets an extra be capped by however
+		// many seats/people are in the booking ("limit by seats"), so the
+		// extras validation below needs to know party_size before it can
+		// enforce that per-extra cap. Guest detail collection still happens
+		// after extras, once party_size has also picked up any growth from
+		// the older extra-N-person convention below.
+		$party_size = 1;
+		if ( $service['allow_party'] ) {
+			$requested_party = isset( $params['party_size'] ) ? max( 1, (int) $params['party_size'] ) : 1;
+			$max_party       = max( 1, (int) $service['max_capacity'] );
+			$party_size      = min( $requested_party, $max_party );
+		}
+
 		// Validate + price the selected extras against the service's own
-		// extras list (never trust price/label from the client).
+		// extras list (never trust price/label/max from the client).
 		$valid_extras = array();
 		$extras_total = 0;
-		$party_size   = 1;
 		foreach ( $extras_in as $chosen ) {
 			$key = isset( $chosen['key'] ) ? sanitize_title( $chosen['key'] ) : '';
 			$qty = isset( $chosen['qty'] ) ? max( 0, (int) $chosen['qty'] ) : 0;
@@ -399,7 +412,18 @@ class TC_Rest_Api {
 			}
 			foreach ( $service['extras'] as $extra ) {
 				if ( $extra['key'] === $key ) {
-					$qty           = min( $qty, (int) $extra['max'] );
+					$extra_max = (int) $extra['max'];
+					// GitHub issue #48 - "limit by seats": this extra can't
+					// be bought in a quantity greater than the number of
+					// people in the booking, regardless of its own
+					// configured Max qty.
+					if ( ! empty( $extra['limit_by_seats'] ) ) {
+						$extra_max = min( $extra_max, $party_size );
+					}
+					$qty = min( $qty, $extra_max );
+					if ( $qty <= 0 ) {
+						break;
+					}
 					$valid_extras[] = array(
 						'key'   => $key,
 						'label' => $extra['label'],
@@ -417,18 +441,10 @@ class TC_Rest_Api {
 			}
 		}
 
-		// "Bring anyone with you" (GitHub issue #6): a real group-size step,
-		// gated per-service, distinct from the older extra-N-person naming
-		// convention above (which stays working for whoever already relies
-		// on it). Capped at the service's own max_capacity, which already
-		// including the customer themself - never trust the client's number
-		// past that ceiling.
+		// Guest detail collection (still gated on allow_party) - party_size
+		// itself was already finalized above.
 		$guests = array();
 		if ( $service['allow_party'] ) {
-			$requested_party = isset( $params['party_size'] ) ? max( 1, (int) $params['party_size'] ) : 1;
-			$max_party       = max( 1, (int) $service['max_capacity'] );
-			$party_size      = max( $party_size, min( $requested_party, $max_party ) );
-
 			$guests_in = isset( $params['guests'] ) && is_array( $params['guests'] ) ? $params['guests'] : array();
 			foreach ( $guests_in as $guest ) {
 				$g_name  = isset( $guest['name'] ) ? sanitize_text_field( $guest['name'] ) : '';

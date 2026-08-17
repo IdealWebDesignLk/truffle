@@ -609,19 +609,33 @@
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
+	// GitHub issue #48 - an extra with "limit by seats" ticked (admin: Service
+	// edit screen, extras repeater) can't be bought in a quantity greater than
+	// the number of people in the booking. partyMultiplier() already resolves
+	// that to 1 for services that don't use "bring anyone with you", so a
+	// solo (non-party) booking correctly caps a seat-limited extra at 1.
+	// Extras without the checkbox still just use their own configured Max
+	// qty, unchanged. Re-validated server-side in create_booking() too -
+	// never trust this cap alone.
+	function extraEffectiveMax( e ) {
+		return e.limit_by_seats ? Math.min( e.max, partyMultiplier() ) : e.max;
+	}
+
 	function renderExtras() {
 		var service = getService( state.serviceId );
 		if ( ! service ) return '<p>Please go back and pick a date.</p>';
 		var rows = service.extras.length === 0
 			? '<p style="color:var(--ink-soft);font-size:14px">No extras for this ceremony.</p>'
 			: service.extras.map( function ( e ) {
-				var qty = state.extraQty[ e.key ] || 0;
+				var max = extraEffectiveMax( e );
+				var qty = Math.min( state.extraQty[ e.key ] || 0, max );
+				state.extraQty[ e.key ] = qty;
 				return '<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">' + escapeHtml( e.label ) + '</div>' +
-					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + e.max + '</div>' +
+					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + max + '</div>' +
 					( e.description ? '<div class="ed">' + escapeHtml( e.description ) + '</div>' : '' ) + '</div>' +
 					'<div class="tc-qty"><button data-extra="' + e.key + '" data-dir="-1"' + ( 0 === qty ? ' disabled' : '' ) + '>\u2212</button>' +
 					'<span class="val">' + qty + '</span>' +
-					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= e.max ? ' disabled' : '' ) + '>+</button></div></div>';
+					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= max ? ' disabled' : '' ) + '>+</button></div></div>';
 			} ).join( '' );
 
 		return '<p class="tc-eyebrow">' + stepLabel( 'extras' ) + '</p><h2 class="tc-title">Extras &amp; quantity</h2>' + selectionSummary() + rows +
@@ -777,7 +791,7 @@
 				var extra = null;
 				svc.extras.forEach( function ( e ) { if ( e.key === key ) extra = e; } );
 				var v = ( state.extraQty[ key ] || 0 ) + dir;
-				v = Math.max( 0, Math.min( extra.max, v ) );
+				v = Math.max( 0, Math.min( extraEffectiveMax( extra ), v ) );
 				state.extraQty[ key ] = v;
 				render();
 			};

@@ -206,10 +206,11 @@ class TC_Meta_Boxes {
 	}
 
 	private static function render_extra_row( $index, $extra ) {
-		$label       = isset( $extra['label'] ) ? $extra['label'] : '';
-		$price       = isset( $extra['price'] ) ? $extra['price'] : '';
-		$max         = isset( $extra['max'] ) ? $extra['max'] : 1;
-		$description = isset( $extra['description'] ) ? $extra['description'] : '';
+		$label          = isset( $extra['label'] ) ? $extra['label'] : '';
+		$price          = isset( $extra['price'] ) ? $extra['price'] : '';
+		$max            = isset( $extra['max'] ) ? $extra['max'] : 1;
+		$description    = isset( $extra['description'] ) ? $extra['description'] : '';
+		$limit_by_seats = ! empty( $extra['limit_by_seats'] );
 		?>
 		<div class="tc-extra-row">
 			<div class="tc-extra-row-main">
@@ -218,6 +219,19 @@ class TC_Meta_Boxes {
 				<input type="number" step="1" min="1" placeholder="<?php esc_attr_e( 'Max qty', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][max]" value="<?php echo esc_attr( $max ); ?>" class="tc-extra-max">
 				<button type="button" class="button-link-delete tc-remove-extra"><?php esc_html_e( 'Remove', 'tc-booking' ); ?></button>
 			</div>
+			<?php
+			// GitHub issue #48 - some extras only make sense up to how many
+			// seats/people are actually in the booking (e.g. one "meal" per
+			// person). When ticked, this extra's runtime max is the smaller
+			// of its own Max qty above and the party size chosen earlier in
+			// the booking flow, enforced both client-side (booking-app.js)
+			// and again server-side (create_booking()) - never trust the
+			// client's number alone.
+			?>
+			<label class="tc-extra-limit-seats">
+				<input type="checkbox" name="tc_extras[<?php echo esc_attr( $index ); ?>][limit_by_seats]" value="1"<?php checked( $limit_by_seats ); ?>>
+				<?php esc_html_e( 'Limit by seats (cap quantity at the number of people in the booking)', 'tc-booking' ); ?>
+			</label>
 			<textarea placeholder="<?php esc_attr_e( 'Description shown to customers explaining what this extra is (optional)', 'tc-booking' ); ?>" name="tc_extras[<?php echo esc_attr( $index ); ?>][description]" class="tc-extra-description" rows="2"><?php echo esc_textarea( $description ); ?></textarea>
 		</div>
 		<?php
@@ -255,11 +269,12 @@ class TC_Meta_Boxes {
 					continue; // Skip blank rows left over from removed inputs.
 				}
 				$extras[] = array(
-					'key'         => sanitize_title( $label ),
-					'label'       => $label,
-					'price'       => isset( $row['price'] ) ? (float) $row['price'] : 0,
-					'max'         => isset( $row['max'] ) ? max( 1, (int) $row['max'] ) : 1,
-					'description' => isset( $row['description'] ) ? sanitize_textarea_field( wp_unslash( $row['description'] ) ) : '',
+					'key'            => sanitize_title( $label ),
+					'label'          => $label,
+					'price'          => isset( $row['price'] ) ? (float) $row['price'] : 0,
+					'max'            => isset( $row['max'] ) ? max( 1, (int) $row['max'] ) : 1,
+					'description'    => isset( $row['description'] ) ? sanitize_textarea_field( wp_unslash( $row['description'] ) ) : '',
+					'limit_by_seats' => isset( $row['limit_by_seats'] ) && '1' === $row['limit_by_seats'],
 				);
 			}
 		}

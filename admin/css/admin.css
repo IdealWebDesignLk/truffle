@@ -24,6 +24,16 @@
 .tc-extra-description {
 	width: 100%;
 }
+/* GitHub issue #48 - "limit by seats" checkbox on each extra row. */
+.tc-extra-limit-seats {
+	display: block;
+	font-size: 12.5px;
+	color: #50575e;
+	margin-bottom: 8px;
+}
+.tc-extra-limit-seats input {
+	margin-right: 4px;
+}
 #tc-extras-rows {
 	margin-bottom: 8px;
 }

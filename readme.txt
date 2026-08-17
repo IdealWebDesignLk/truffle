@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.13.0
+Stable tag: 0.14.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,15 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.14.0 =
+* New "Limit by seats" checkbox on each extra (Service edit screen,
+  Extras repeater). When ticked, that extra's purchasable quantity is
+  capped at however many people are in the booking (the party size
+  chosen earlier in the flow, or 1 for services that don't use "bring
+  anyone with you"), instead of always allowing up to its own
+  configured Max qty. Enforced both in the booking widget and again
+  server-side when the booking is created. Resolves GitHub issue #48.
 
 = 0.13.0 =
 * A multi-word city name on the map now breaks onto two lines under its
