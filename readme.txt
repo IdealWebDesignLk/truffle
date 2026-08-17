@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.11.0
+Stable tag: 0.12.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,18 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.12.0 =
+* Brought back the original availability table (every ceremony as a row,
+  dates as columns, tap any open cell to pick both at once) that GitHub
+  issue #21 had replaced with cards + a calendar - the client preferred
+  it, and asked for a full month of columns instead of the original
+  7-day window (horizontally scrollable, same as before). Also fixed a
+  latent bug this surfaced: the party-size cap was matching the
+  selected date's grid cell by date only, which was only safe when the
+  grid held one service's data at a time - now matches by service too,
+  since the table loads every service's availability at once. Resolves
+  GitHub issue #43.
 
 = 0.11.0 =
 * The ceremony picker and its calendar are back on one view (issue #38
