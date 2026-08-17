@@ -37,11 +37,7 @@
   --danger: #A3402E;
   --radius: 14px;
 
-  /* Widened to match the site's normal container width (1140px), mainly
-     so the availability table (a full month of day columns, see
-     renderAvailabilityTable() in booking-app.js) needs less horizontal
-     scrolling. */
-  max-width: 1140px;
+  max-width: 860px;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
   color: var(--ink);
@@ -169,28 +165,45 @@
 .tc-lightbox-overlay img { max-width: 100%; max-height: 90vh; border-radius: 8px; cursor: default; }
 .tc-lightbox-close { position: fixed; top: 18px; right: 20px; background: none; border: none; color: #fff; font-size: 32px; line-height: 1; cursor: pointer; padding: 6px; }
 
-/* GitHub issue #21 originally replaced this table-based availability step
-   with ceremony cards + a separate month calendar. GitHub issue #43
-   brought the table back (client preferred it) with a full month of
-   columns instead of the original 7-day window - see
-   renderAvailabilityTable() in booking-app.js. */
+/* GitHub issue #21 - availability step: ceremony picker cards, then a
+   single-service month calendar. */
 .tc-grid-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .tc-grid-nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .tc-grid-nav button:disabled { opacity: .35; cursor: not-allowed; }
 .tc-grid-nav .range { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
 
-.tc-grid-scroll { overflow-x: auto; }
-table.tc-avail { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13px; }
-table.tc-avail th { text-align: center; font-weight: 600; padding: 6px 4px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 11.5px; }
-table.tc-avail th:first-child { text-align: left; }
-table.tc-avail td { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: center; }
-table.tc-avail td:first-child { text-align: left; color: var(--ink-soft); font-size: 12.5px; width: 130px; }
-.tc-cell { border-radius: 8px; padding: 7px 3px; font-weight: 500; cursor: pointer; font-size: 12.5px; }
-.tc-cell.available { background: var(--available-bg); color: var(--available); }
-.tc-cell.limited { background: var(--limited-bg); color: var(--limited); }
-.tc-cell.off { background: var(--unavailable-bg); color: var(--unavailable); font-weight: 400; cursor: default; }
-.tc-cell-remaining { font-size: 9.5px; font-weight: 400; opacity: .8; line-height: 1.3; }
+.tc-section-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 600; margin: 0 0 10px; }
+.tc-svc-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 22px; }
+@media (max-width: 480px) { .tc-svc-cards { grid-template-columns: 1fr; } }
+.tc-svc-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; }
+.tc-svc-card:hover { border-color: var(--brand); }
+.tc-svc-card.selected { border-color: var(--brand); background: var(--brand-bg); }
+.tc-svc-card .svc-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.tc-svc-card .svc-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ink-soft); }
+.tc-svc-card .svc-price { font-weight: 600; color: var(--ink); }
 
+.tc-cal-heading { font-size: 15px; font-weight: 600; margin: 22px 0 2px; padding-top: 18px; border-top: 1px solid var(--line); }
+
+/* GitHub issue #34 briefly compacted these (capped max-width, shorter
+   cells) because the calendar shared a screen with the ceremony cards.
+   GitHub issue #38 gave the calendar its own step (no longer competing
+   with the cards for room) and this was reverted to full width; #42 put
+   the calendar back on the same screen as the cards, but full width is
+   left as-is since the size wasn't part of that request. */
+.tc-avail-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.tc-avail-dow { font-size: 11px; color: var(--ink-soft); text-align: center; padding-bottom: 4px; }
+.tc-avail-day { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; cursor: pointer; background: var(--available-bg); color: var(--available); }
+.tc-avail-day .d { font-size: 14px; font-weight: 600; }
+.tc-avail-day .status { font-size: 8.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+/* GitHub issue #33 - "N left" was too small to read at a glance next to
+   the status label; bumped up and given full opacity. */
+.tc-avail-day .rem { font-size: 10.5px; font-weight: 600; opacity: 1; }
+.tc-avail-day.limited { background: var(--limited-bg); color: var(--limited); }
+.tc-avail-day.off { background: var(--unavailable-bg); color: var(--unavailable); cursor: default; }
+.tc-avail-day.empty { visibility: hidden; }
+.tc-avail-day.past { background: transparent; color: var(--ink-soft); opacity: .4; cursor: default; }
+.tc-avail-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 480px) { .tc-avail-day { font-size: 10.5px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } .tc-avail-day .rem { font-size: 9px; } }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
 .tc-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

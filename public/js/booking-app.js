@@ -53,11 +53,11 @@
 
 	function getActiveSteps() {
 		var svc   = getService( state.serviceId );
-		// GitHub issue #38 briefly split this into 'service' then
-		// 'calendar' as two separate steps; #42 merged them back into one
-		// view; #43 replaced that view with the every-service-as-a-row
-		// table (see renderAvailabilityTable()) - 'service' still covers
-		// all of it as a single step either way.
+		// GitHub issue #38 previously split this into 'service' then
+		// 'calendar' as two separate steps; GitHub issue #42 puts them back
+		// in one view ("2nd and 3rd step to be in one view") - ceremony
+		// cards and that ceremony's calendar both render on the 'service'
+		// step again, see renderServicePicker().
 		var steps = [ 'location', 'service' ];
 		if ( svc && svc.allow_party ) {
 			steps.push( 'party' );
@@ -205,15 +205,13 @@
 	// real remaining-seat count for shared services (null for exclusive
 	// ones), straight from the same /availability data already loaded for
 	// the grid.
-	// GitHub issue #43 - state.grid now holds every service's availability
-	// at once (the table shows all of them together), so this has to
-	// match on service_id as well as date - matching by date alone would
-	// silently pick whichever service's row for that date happened to
-	// come first in the array.
 	function selectedGridCell() {
+		// state.grid only ever holds the currently selected service's
+		// availability (GitHub issue #21 - one service's calendar at a
+		// time), so matching by date alone is correct here.
 		var found = null;
 		state.grid.forEach( function ( g ) {
-			if ( g.service_id === state.serviceId && g.date === state.date ) found = g;
+			if ( g.date === state.date ) found = g;
 		} );
 		return found;
 	}
@@ -306,10 +304,14 @@
 
 	function setStep( key ) {
 		state.step = key;
+		// GitHub issue #21 - the service step defaults to the first ceremony
+		// instead of requiring a click to imply the service; GitHub issue
+		// #42 - since the calendar is back on this same step, load its
+		// grid right away too instead of waiting for a separate step.
+		if ( 'service' === key && ! state.serviceId && state.services.length ) {
+			state.serviceId = state.services[ 0 ].id;
+		}
 		render();
-		// GitHub issue #43 - the table shows every service as a row at
-		// once (no single "selected" service to wait on), so load the
-		// grid as soon as this step is entered.
 		if ( 'service' === key ) {
 			loadGrid();
 		}
@@ -326,7 +328,7 @@
 		var body = '';
 		switch ( state.step ) {
 			case 'location': body = renderLocation(); break;
-			case 'service': body = renderAvailabilityTable(); break;
+			case 'service': body = renderServicePicker(); break;
 			case 'party': body = renderParty(); break;
 			case 'extras': body = renderExtras(); break;
 			case 'guests': body = renderGuests(); break;
@@ -460,13 +462,12 @@
 			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>Continue</button></div>';
 	}
 
-	// GitHub issue #21 originally replaced this table (every service as a
-	// row, dates as columns, tap any open cell to pick both at once) with
-	// a ceremony-cards-then-calendar flow, because it was hard to read on
-	// mobile as a 7-day window. GitHub issue #43 - the client prefers the
-	// table after all, and asked for a full month of columns instead of
-	// the original 7-day window (wide, horizontally scrollable, same as
-	// this table already was for 7 days - see .tc-grid-scroll).
+	// GitHub issue #21 - "pick a ceremony and date in one click on a 7-day
+	// table showing every service as a row" was hard to read, especially
+	// on mobile with several services. Replaced with: pick a ceremony from
+	// a card grid, then a single-service month calendar appears below it.
+	// (GitHub issue #38 briefly split these into two separate steps;
+	// GitHub issue #42 merged them back into one view.)
 	function serviceDurationLabel( svc ) {
 		var d = Math.max( 1, svc.duration_days );
 		return d + ( d > 1 ? ' days' : ' day' );
@@ -479,55 +480,69 @@
 		return { first: first, last: last };
 	}
 
-	function renderAvailabilityTable() {
-		var loc       = getLocation( state.locationId );
-		var bounds    = monthBoundsFromOffset( state.monthOffset );
-		var monthName = bounds.first.toLocaleDateString( 'en-US', { month: 'long', year: 'numeric' } );
-		var daysInMo  = bounds.last.getDate();
-		var today     = nlToday();
+	function renderServicePicker() {
+		var loc     = getLocation( state.locationId );
+		var service = getService( state.serviceId );
 
-		var days = [];
-		for ( var d = 1; d <= daysInMo; d++ ) {
-			days.push( new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d ) );
-		}
-
-		var head = days.map( function ( dt ) {
-			return '<th>' + dt.toLocaleDateString( 'en-US', { weekday: 'short' } ) + '<br>' + dt.getDate() + '</th>';
+		var cards = state.services.map( function ( svc ) {
+			var selected = svc.id === state.serviceId;
+			return '<div class="tc-svc-card' + ( selected ? ' selected' : '' ) + '" data-svc-select="' + svc.id + '">' +
+				'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
+				'<div class="svc-meta"><span class="svc-duration">' + serviceDurationLabel( svc ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
+				'</div>';
 		} ).join( '' );
-
-		var rows = state.services.map( function ( svc ) {
-			var cells = days.map( function ( dt ) {
-				var iso    = isoDate( dt );
-				var isPast = dt < today;
-				var cell   = null;
-				state.grid.forEach( function ( g ) {
-					if ( g.service_id === svc.id && g.date === iso ) cell = g;
-				} );
-				if ( isPast || ! cell || 'off' === cell.status ) {
-					return '<td><div class="tc-cell off">&mdash;</div></td>';
-				}
-				var remainingLine = ( null !== cell.remaining && undefined !== cell.remaining )
-					? '<div class="tc-cell-remaining">' + cell.remaining + ' left</div>'
-					: '';
-				return '<td><div class="tc-cell ' + cell.status + '" data-svc="' + svc.id + '" data-date="' + iso + '">' + remainingLine + fmt( cell.price ) + '</div></td>';
-			} ).join( '' );
-			return '<tr><td>' + escapeHtml( svc.name ) + '<small>' + serviceDurationLabel( svc ) + '</small></td>' + cells + '</tr>';
-		} ).join( '' );
-
-		var minMonth = 0;
-		var maxMonth = 6; // ~6 months ahead, same booking-horizon idea used elsewhere
 
 		return '<p class="tc-eyebrow">' + stepLabel( 'service' ) + '</p>' +
 			'<h2 class="tc-title">Availability at ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
-			'<p class="tc-sub">Pick a ceremony and date together \u2014 tap any open cell.</p>' +
-			'<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190 earlier</button>' +
-			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>later \u2192</button></div>' +
-			'<div class="tc-grid-scroll">' + ( state.gridLoading ? '<p>Loading availability\u2026</p>' :
-				'<table class="tc-avail"><thead><tr><th></th>' + head + '</tr></thead><tbody>' + rows + '</tbody></table>' ) + '</div>' +
+			'<p class="tc-sub">First choose a ceremony. Its available dates will appear directly below.</p>' +
+			'<p class="tc-section-label">Choose a ceremony</p>' +
+			'<div class="tc-svc-cards">' + cards + '</div>' +
+			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
+				'<p class="tc-sub">Select an open day to continue.</p>' +
+				renderAvailabilityCalendar( service ) : '' ) +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
+	}
+
+	function renderAvailabilityCalendar( service ) {
+		var bounds    = monthBoundsFromOffset( state.monthOffset );
+		var monthName = bounds.first.toLocaleDateString( 'en-US', { month: 'long', year: 'numeric' } );
+		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
+		var daysInMo  = bounds.last.getDate();
+		var today     = nlToday();
+
+		var cells = '';
+		for ( var i = 0; i < firstDow; i++ ) {
+			cells += '<div class="tc-avail-day empty"></div>';
+		}
+		for ( var d = 1; d <= daysInMo; d++ ) {
+			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
+			var iso     = isoDate( dateObj );
+			var cell    = null;
+			state.grid.forEach( function ( g ) { if ( g.date === iso ) cell = g; } );
+			var status    = cell ? cell.status : 'off';
+			var isPast    = dateObj < today;
+			var clickable = ! isPast && 'off' !== status;
+			var cls       = isPast ? 'past' : status;
+			if ( iso === state.date ) cls += ' selected';
+			var label = 'available' === status ? 'Open' : ( 'limited' === status ? 'Almost full' : 'Closed' );
+			var remainingSub = ( cell && null !== cell.remaining && undefined !== cell.remaining && 'limited' === status )
+				? '<span class="rem">' + cell.remaining + ' left</span>' : '';
+			cells += '<div class="tc-avail-day ' + cls + '"' + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
+				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + label + '</span>' + remainingSub ) + '</div>';
+		}
+
+		var minMonth = 0;
+		var maxMonth = 6; // ~6 months ahead, same booking-horizon idea as the old 7-week cap
+
+		return '<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190</button>' +
+			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>\u2192</button></div>' +
+			( state.gridLoading ? '<p>Loading availability\u2026</p>' :
+				'<div class="tc-avail-cal">' +
+				[ 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' ].map( function ( l ) { return '<div class="tc-avail-dow">' + l + '</div>'; } ).join( '' ) +
+				cells + '</div>' ) +
 			'<div class="tc-legend"><span><span class="tc-swatch" style="background:var(--available)"></span>Available</span>' +
 			'<span><span class="tc-swatch" style="background:var(--limited)"></span>Almost full</span>' +
-			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Not available</span></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
+			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Not available</span></div>';
 	}
 
 	function renderParty() {
@@ -705,15 +720,30 @@
 		var nextMonth = document.getElementById( 'tc-next-month' );
 		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); };
 
-		// GitHub issue #43 - tapping any open cell picks the service and
-		// date together in one click, same as the pre-#21 table.
-		root.querySelectorAll( '[data-svc][data-date]' ).forEach( function ( el ) {
+		// GitHub issue #21 - picking a ceremony card no longer implies a
+		// date; it just swaps which service's calendar is shown below, and
+		// stays on this step (GitHub issue #42 - service cards and the
+		// calendar are back on one view together).
+		root.querySelectorAll( '[data-svc-select]' ).forEach( function ( el ) {
 			el.onclick = function () {
-				state.serviceId  = parseInt( el.dataset.svc, 10 );
-				state.date       = el.dataset.date;
+				var id = parseInt( el.dataset.svcSelect, 10 );
+				if ( id === state.serviceId ) return;
+				state.serviceId  = id;
+				state.date       = null;
+				state.monthOffset = 0;
 				state.extraQty   = {};
 				state.partySize  = 1;
 				state.guests     = [];
+				loadGrid();
+			};
+		} );
+
+		root.querySelectorAll( '.tc-avail-day[data-date]' ).forEach( function ( el ) {
+			el.onclick = function () {
+				state.date      = el.dataset.date;
+				state.extraQty  = {};
+				state.partySize = 1;
+				state.guests    = [];
 				goNext();
 			};
 		} );
@@ -784,40 +814,23 @@
 		render();
 	}
 
-	// GitHub issue #43 - the table shows every service's availability at
-	// once, so this fetches one month of the /availability endpoint per
-	// service in parallel (same approach the pre-#21 week table used) and
-	// tags each row with its service_id so renderAvailabilityTable() can
-	// look cells up by (service, date). Guards against a stale response
-	// landing after the customer changed location or month mid-flight.
 	function loadGrid() {
-		if ( ! state.locationId || ! state.services.length ) return;
-		var requestedLocation = state.locationId;
-		var requestedMonth    = state.monthOffset;
+		if ( ! state.serviceId ) return;
+		var requestedService = state.serviceId; // guard against a stale response landing after the customer picked a different card
 		state.gridLoading = true;
 		render();
 		var bounds = monthBoundsFromOffset( state.monthOffset );
 
-		var requests = state.services.map( function ( svc ) {
-			return apiGet( '/availability?service_id=' + svc.id + '&location_id=' + state.locationId +
-				'&start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
-				.then( function ( rows ) {
-					return rows.map( function ( r ) {
-						r.service_id = svc.id;
-						return r;
-					} );
-				} );
-		} );
-
-		Promise.all( requests )
-			.then( function ( results ) {
-				if ( requestedLocation !== state.locationId || requestedMonth !== state.monthOffset ) return;
-				state.grid        = [].concat.apply( [], results );
+		apiGet( '/availability?service_id=' + requestedService + '&location_id=' + state.locationId +
+			'&start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
+			.then( function ( rows ) {
+				if ( requestedService !== state.serviceId ) return;
+				state.grid        = rows;
 				state.gridLoading = false;
 				render();
 			} )
 			.catch( function ( err ) {
-				if ( requestedLocation !== state.locationId || requestedMonth !== state.monthOffset ) return;
+				if ( requestedService !== state.serviceId ) return;
 				state.error        = err.message;
 				state.gridLoading  = false;
 				render();

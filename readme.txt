@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.12.1
+Stable tag: 0.12.2
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -26,18 +26,24 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 
 == Changelog ==
 
-= 0.12.1 =
+= 0.12.2 =
+* Rolled back 0.12.0 and 0.12.1 at the client's request: the
+  availability step is back to ceremony cards on top with the selected
+  ceremony's calendar below (not the full month table), and the widget
+  is back to its 860px width (not 1140px). GitHub issue #44.
+
+= 0.12.1 (reverted in 0.12.2) =
 * Widened the booking widget from 860px to 1140px, matching the site's
   normal container width - mainly so the availability table shows more
   of the month at once without scrolling.
 
-= 0.12.0 =
-* Brought back the original availability table (every ceremony as a row,
-  dates as columns, tap any open cell to pick both at once) that GitHub
-  issue #21 had replaced with cards + a calendar - the client preferred
-  it, and asked for a full month of columns instead of the original
-  7-day window (horizontally scrollable, same as before). Also fixed a
-  latent bug this surfaced: the party-size cap was matching the
+= 0.12.0 (reverted in 0.12.2) =
+* Brought back the original availability table (every ceremony as a
+  row, dates as columns, tap any open cell to pick both at once) that
+  GitHub issue #21 had replaced with cards + a calendar - the client
+  preferred it, and asked for a full month of columns instead of the
+  original 7-day window (horizontally scrollable, same as before). Also
+  fixed a latent bug this surfaced: the party-size cap was matching the
   selected date's grid cell by date only, which was only safe when the
   grid held one service's data at a time - now matches by service too,
   since the table loads every service's availability at once. Resolves
