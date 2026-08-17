@@ -404,17 +404,33 @@
 			var flip     = p.x > 230;
 			// GitHub issue #40 - dot and label text both sized down a little.
 			var labelX   = flip ? ( p.x - 9 ) : ( p.x + 9 );
+			var anchor   = flip ? ' text-anchor="end"' : '';
+			// GitHub issue #45 - a multi-word city name now breaks onto two
+			// tspan lines instead of running on as one long line; the two
+			// dy offsets keep the pair vertically centered on the pin
+			// (dominant-baseline only centers a single line, not a
+			// multi-tspan block).
+			var cityName = l.name.split( ' (' )[ 0 ];
+			var words    = cityName.split( ' ' );
+			var labelInner = words.length > 1
+				? '<tspan x="' + labelX + '" dy="-0.35em">' + escapeHtml( words[ 0 ] ) + '</tspan>' +
+					'<tspan x="' + labelX + '" dy="1.1em">' + escapeHtml( words.slice( 1 ).join( ' ' ) ) + '</tspan>'
+				: escapeHtml( cityName );
 			return '<g class="tc-pin-group' + ( selected ? ' selected' : '' ) + '" data-loc="' + l.id + '">' +
 				'<circle class="tc-pin" cx="' + p.x + '" cy="' + p.y + '" r="' + ( selected ? 7.5 : 5.5 ) + '"></circle>' +
-				'<text class="tc-pin-label" x="' + labelX + '" y="' + p.y + '" dominant-baseline="middle"' + ( flip ? ' text-anchor="end"' : '' ) + '>' + escapeHtml( l.name.split( ' (' )[ 0 ] ) + '</text>' +
+				'<text class="tc-pin-label" x="' + labelX + '" y="' + p.y + '" dominant-baseline="middle"' + anchor + '>' + labelInner + '</text>' +
 				'</g>';
 		} ).join( '' );
 
 		var list = state.locations.map( function ( l ) {
 			// GitHub issue #27 - address is intentionally not shown to
-			// customers, just the location name.
+			// customers, just the location name. GitHub issue #46 - the
+			// province is dropped too (city name only, same as the map
+			// pin labels already did) so the list is compact enough for a
+			// two-column layout without needing to scroll to reach the
+			// last few cities.
 			return '<div class="tc-loc-row' + ( state.locationId === l.id ? ' selected' : '' ) + '" data-loc="' + l.id + '">' +
-				'<div><div class="name">' + escapeHtml( l.name ) + '</div></div>' +
+				'<div><div class="name">' + escapeHtml( l.name.split( ' (' )[ 0 ] ) + '</div></div>' +
 				'</div>';
 		} ).join( '' );
 
