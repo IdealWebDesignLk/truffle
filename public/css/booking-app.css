@@ -137,9 +137,10 @@
    -y:auto), requiring a scroll to reach the last few cities. Two columns
    plus the province being dropped from the label (shorter rows) fits
    every city without scrolling, so the scroll container was removed;
-   row padding was also trimmed a bit for a more compact fit. */
+   row padding was also trimmed a bit for a more compact fit. GitHub
+   issue #49 - stays two columns on mobile too (was collapsing to one
+   below 480px, bringing the scrolling back on phones). */
 .tc-loc-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 22px; }
-@media (max-width: 480px) { .tc-loc-list { grid-template-columns: 1fr; } }
 .tc-loc-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
 .tc-loc-row:hover { border-color: var(--brand); }
 .tc-loc-row.selected { border-color: var(--brand); background: var(--brand-bg); }
@@ -174,13 +175,18 @@
 /* GitHub issue #21 - availability step: ceremony picker cards, then a
    single-service month calendar. */
 .tc-grid-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.tc-grid-nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+/* GitHub issue #51 - prev/next were only as wide as their padding+glyph
+   made them, which could render slightly unevenly; fixed equal
+   width/height with flex-centered content keeps both buttons identical
+   and squarely aligned with the month label between them. */
+.tc-grid-nav button { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--brand); background: var(--surface); border-radius: 10px; font-size: 15px; font-weight: 700; color: var(--brand); cursor: pointer; }
 .tc-grid-nav button:disabled { opacity: .35; cursor: not-allowed; }
 .tc-grid-nav .range { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
 
 .tc-section-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 600; margin: 0 0 10px; }
+/* GitHub issue #50 - stays two columns on mobile too (was collapsing to
+   one below 480px), so ceremony cards need less scrolling on phones. */
 .tc-svc-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 22px; }
-@media (max-width: 480px) { .tc-svc-cards { grid-template-columns: 1fr; } }
 .tc-svc-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; }
 .tc-svc-card:hover { border-color: var(--brand); }
 .tc-svc-card.selected { border-color: var(--brand); background: var(--brand-bg); }
@@ -214,20 +220,44 @@
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
 .tc-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
+/* party size (single-row title/price + qty stepper - not the multi-row
+   extras layout below, since there's no per-item max/description here) */
+.tc-party-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.tc-party-row .en { font-size: 16px; font-weight: 600; color: var(--brand-deep); }
+.tc-party-row .ep { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
 /* extras */
 /* GitHub issue #47 - "doesn't read nice... bigger titles, purple": the
-   extra's name is now bigger/bolder and purple so it's the clear visual
-   anchor of each row when scanning down the list; row padding was also
-   opened up a little for more breathing room between rows. */
-.tc-extra-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+   extra's name is bigger/bolder and purple so it's the clear visual
+   anchor of each row when scanning down the list.
+   GitHub issue #53 - restructured into two rows: the title spans the
+   full row width on its own line, then price/max (+ the info icon,
+   description moved to a popup - see .tc-extra-info-card below) sits on
+   the left of a second row with the qty stepper on the right, instead of
+   qty being vertically centered against a whole multi-line text block. */
+.tc-extra-row { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .tc-extra-row:last-child { border-bottom: none; }
-.tc-extra-info .en { font-size: 16px; font-weight: 600; color: var(--brand-deep); }
-.tc-extra-info .ep { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
-.tc-extra-info .ed { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.4; }
+.tc-extra-row .en { font-size: 16px; font-weight: 600; color: var(--brand-deep); }
+.tc-extra-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 4px; }
+.tc-extra-meta .ep { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-soft); }
+.tc-info-btn { background: none; border: none; padding: 0; margin: 0; color: var(--brand); cursor: pointer; display: flex; align-items: center; -webkit-appearance: none; appearance: none; }
+.tc-info-btn:hover, .tc-info-btn:focus { color: var(--brand-deep); }
 .tc-qty { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .tc-qty button { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; line-height: 1; }
 .tc-qty button:disabled { opacity: .35; cursor: not-allowed; }
 .tc-qty .val { min-width: 16px; text-align: center; font-weight: 500; font-size: 14px; }
+
+/* GitHub issue #53 - the extra's description now opens as a popup (via
+   the info icon above) instead of always rendering inline; reuses the
+   .tc-modal-overlay/.tc-modal-card base from the guide-info popup, with
+   its own head row (title + X, left/right instead of centered) and a
+   full-width Close button at the bottom to match the requested design. */
+.tc-extra-info-card { text-align: left; }
+.tc-extra-info-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.tc-extra-info-card .tc-modal-name { margin-bottom: 0; }
+.tc-extra-info-card .tc-modal-close { position: static; padding: 0; flex-shrink: 0; }
+.tc-extra-info-card .tc-modal-bio { margin-bottom: 20px; }
+.tc-extra-info-close-btn { width: 100%; }
 
 /* form */
 .tc-field { margin-bottom: 14px; }
@@ -251,7 +281,13 @@
 .tc-btn { border-radius: 10px; padding: 11px 22px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 .tc-btn.primary { background: var(--brand-deep); border-color: var(--brand-deep); color: #fff; }
 .tc-btn.primary:disabled { opacity: .5; cursor: not-allowed; }
-.tc-btn.ghost { border-color: transparent; background: none; color: var(--ink-soft); }
+/* GitHub issue #52/#51 - Back read as plain text (transparent border, no
+   background), inconsistent with every other button in the flow. Now a
+   proper outlined pill matching the design system's purple accent,
+   consistently across all steps since every Back button shares this
+   class. */
+.tc-btn.ghost { border-color: var(--brand); background: var(--surface); color: var(--brand-deep); }
+.tc-btn.ghost:hover { background: var(--brand-bg); }
 
 .tc-confirm { text-align: center; padding: 20px 0; }
 .tc-confirm .icon { width: 56px; height: 56px; border-radius: 50%; background: var(--brand-bg); color: var(--brand-deep); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 26px; }

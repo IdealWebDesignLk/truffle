@@ -47,6 +47,7 @@
 		fieldErrors: {},
 		lightboxUrl: null,
 		guideInfoOpen: false,
+		extraInfoKey: null,
 		submitting: false,
 		error: null,
 	};
@@ -338,7 +339,7 @@
 
 		root.innerHTML = '<div class="tc-progress">' + progress + '</div><div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
-			body + '</div>' + renderLightbox() + renderGuideInfoModal();
+			body + '</div>' + renderLightbox() + renderGuideInfoModal() + renderExtraInfoModal();
 
 		attachHandlers();
 	}
@@ -371,6 +372,28 @@
 			'<div class="tc-modal-label">Your guide at this location</div>' +
 			'<div class="tc-modal-name">' + escapeHtml( g.name ) + '</div>' +
 			'<div class="tc-modal-bio">' + escapeHtml( g.bio || '' ) + '</div>' +
+			'</div></div>';
+	}
+
+	// GitHub issue #53 - the extra's own description used to always render
+	// inline under the price, adding clutter (and unpredictable row height)
+	// to a list that's otherwise just label/price/qty. It now opens in a
+	// popup via the (i) info button instead, only when the customer asks
+	// for it.
+	function renderExtraInfoModal() {
+		if ( ! state.extraInfoKey ) return '';
+		var service = getService( state.serviceId );
+		var extra   = null;
+		if ( service ) {
+			service.extras.forEach( function ( e ) { if ( e.key === state.extraInfoKey ) extra = e; } );
+		}
+		if ( ! extra ) return '';
+		return '<div class="tc-modal-overlay" id="tc-extra-info-modal">' +
+			'<div class="tc-modal-card tc-extra-info-card">' +
+			'<div class="tc-extra-info-head"><div class="tc-modal-name">' + escapeHtml( extra.label ) + '</div>' +
+			'<button type="button" class="tc-modal-close" id="tc-extra-info-modal-close" aria-label="Close">&times;</button></div>' +
+			'<div class="tc-modal-bio">' + escapeHtml( extra.description || '' ) + '</div>' +
+			'<button type="button" class="tc-btn primary tc-extra-info-close-btn" id="tc-extra-info-modal-close-btn">Close</button>' +
 			'</div></div>';
 	}
 
@@ -516,7 +539,7 @@
 			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
 				'<p class="tc-sub">Select an open day to continue.</p>' +
 				renderAvailabilityCalendar( service ) : '' ) +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><span></span></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><span></span></div>';
 	}
 
 	function renderAvailabilityCalendar( service ) {
@@ -574,12 +597,12 @@
 		return '<p class="tc-eyebrow">' + stepLabel( 'party' ) + '</p><h2 class="tc-title">How many people are you bringing?</h2>' +
 			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony' +
 			( limited ? ' (limited availability on this date)' : '' ) + '. The base price is charged per person.</p>' +
-			'<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">Total in your group</div>' +
+			'<div class="tc-party-row"><div><div class="en">Total in your group</div>' +
 			'<div class="ep">' + fmt( service.price ) + ' per person</div></div>' +
 			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
 			'<span class="val">' + state.partySize + '</span>' +
 			'<button type="button" id="tc-party-plus"' + ( state.partySize >= max ? ' disabled' : '' ) + '>+</button></div></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	function guestField( idx, key, label, value, placeholder, type ) {
@@ -606,7 +629,7 @@
 		return '<p class="tc-eyebrow">' + stepLabel( 'guests' ) + '</p><h2 class="tc-title">Your group’s details</h2>' +
 			'<p class="tc-sub">We need contact details for everyone joining you, so we can reach them if needed.</p>' +
 			blocks +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	// GitHub issue #48 - an extra with "limit by seats" ticked (admin: Service
@@ -621,25 +644,40 @@
 		return e.limit_by_seats ? Math.min( e.max, partyMultiplier() ) : e.max;
 	}
 
+	// GitHub issue #53 - small circle-i icon next to the price/max line,
+	// opens the extra's description in a popup (renderExtraInfoModal())
+	// instead of always showing it inline.
+	var INFO_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+		'<circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"></circle>' +
+		'<rect x="7.3" y="6.8" width="1.4" height="4.6" rx="0.7" fill="currentColor"></rect>' +
+		'<circle cx="8" cy="4.9" r="0.9" fill="currentColor"></circle></svg>';
+
 	function renderExtras() {
 		var service = getService( state.serviceId );
 		if ( ! service ) return '<p>Please go back and pick a date.</p>';
+		// GitHub issue #53 - full-width title on its own line, then a second
+		// row with price/max (+ info icon for the description, moved out of
+		// the inline text) on the left and the qty stepper on the right.
 		var rows = service.extras.length === 0
 			? '<p style="color:var(--ink-soft);font-size:14px">No extras for this ceremony.</p>'
 			: service.extras.map( function ( e ) {
 				var max = extraEffectiveMax( e );
 				var qty = Math.min( state.extraQty[ e.key ] || 0, max );
 				state.extraQty[ e.key ] = qty;
-				return '<div class="tc-extra-row"><div class="tc-extra-info"><div class="en">' + escapeHtml( e.label ) + '</div>' +
-					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + max + '</div>' +
-					( e.description ? '<div class="ed">' + escapeHtml( e.description ) + '</div>' : '' ) + '</div>' +
+				return '<div class="tc-extra-row">' +
+					'<div class="en">' + escapeHtml( e.label ) + '</div>' +
+					'<div class="tc-extra-meta">' +
+					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + max +
+					( e.description ? '<button type="button" class="tc-info-btn" data-info="' + e.key + '" aria-label="More info about ' + escapeAttr( e.label ) + '">' + INFO_ICON + '</button>' : '' ) +
+					'</div>' +
 					'<div class="tc-qty"><button data-extra="' + e.key + '" data-dir="-1"' + ( 0 === qty ? ' disabled' : '' ) + '>\u2212</button>' +
 					'<span class="val">' + qty + '</span>' +
-					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= max ? ' disabled' : '' ) + '>+</button></div></div>';
+					'<button data-extra="' + e.key + '" data-dir="1"' + ( qty >= max ? ' disabled' : '' ) + '>+</button></div>' +
+					'</div></div>';
 			} ).join( '' );
 
 		return '<p class="tc-eyebrow">' + stepLabel( 'extras' ) + '</p><h2 class="tc-title">Extras &amp; quantity</h2>' + selectionSummary() + rows +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	function renderInfo() {
@@ -649,7 +687,7 @@
 			field( 'lastName', 'Last name', i.lastName, 'Doe' ) +
 			field( 'email', 'Email', i.email, 'jane@example.com', 'email' ) +
 			field( 'phone', 'Phone', i.phone, '+31 6 12345678', 'tel' ) +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 	function field( id, label, value, placeholder, type ) {
 		var err = state.fieldErrors[ id ];
@@ -696,7 +734,7 @@
 			basePriceLine +
 			extraLines +
 			'<div class="tc-rline total"><span class="l">Total</span><span class="r">' + fmt( grandTotal() ) + '</span></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">Back</button>' +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button>' +
 			'<button class="tc-btn primary" id="tc-checkout"' + ( state.submitting ? ' disabled' : '' ) + '>' +
 			( state.submitting ? 'Processing\u2026' : 'Continue to checkout' ) + '</button></div>';
 	}
@@ -740,6 +778,21 @@
 			guideModal.onclick = function ( e ) {
 				if ( e.target === guideModal || e.target.id === 'tc-guide-modal-close' ) {
 					state.guideInfoOpen = false;
+					render();
+				}
+			};
+		}
+
+		// GitHub issue #53 - the (i) button on an extra opens its
+		// description in a popup instead of showing it inline.
+		root.querySelectorAll( '[data-info]' ).forEach( function ( el ) {
+			el.onclick = function () { state.extraInfoKey = el.dataset.info; render(); };
+		} );
+		var extraInfoModal = document.getElementById( 'tc-extra-info-modal' );
+		if ( extraInfoModal ) {
+			extraInfoModal.onclick = function ( e ) {
+				if ( e.target === extraInfoModal || e.target.id === 'tc-extra-info-modal-close' || e.target.id === 'tc-extra-info-modal-close-btn' ) {
+					state.extraInfoKey = null;
 					render();
 				}
 			};
@@ -928,6 +981,9 @@
 			render();
 		} else if ( state.guideInfoOpen ) {
 			state.guideInfoOpen = false;
+			render();
+		} else if ( state.extraInfoKey ) {
+			state.extraInfoKey = null;
 			render();
 		}
 	} );
