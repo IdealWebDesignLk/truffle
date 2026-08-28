@@ -80,12 +80,6 @@
 		return steps;
 	}
 
-	function stepLabel( key ) {
-		var steps = getActiveSteps();
-		var idx   = steps.indexOf( key );
-		return 'Step ' + ( idx + 1 ) + ' of ' + steps.length;
-	}
-
 	function validateDetails() {
 		var errors = {};
 		if ( ! state.info.firstName.trim() ) errors.firstName = 'First name is required.';
@@ -492,8 +486,7 @@
 				'</div>';
 		}
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
-			'<h2 class="tc-title">Pick a location</h2>' +
+		return '<h2 class="tc-title">Pick a location</h2>' +
 			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p>' +
 			// GitHub issue #24 - map/list wrapped as a grid so CSS can put
 			// the map on the right and the list on the left on desktop;
@@ -541,9 +534,8 @@
 				'</div>';
 		} ).join( '' );
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'service' ) + '</p>' +
-			'<h2 class="tc-title">Availability at ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
-			'<p class="tc-sub">First choose a ceremony. Its available dates will appear directly below.</p>' +
+		return '<h2 class="tc-title">Location: ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
+			'<p class="tc-sub">Choose a service. Dates will appear below.</p>' +
 			'<p class="tc-section-label">Choose a ceremony</p>' +
 			'<div class="tc-svc-cards">' + cards + '</div>' +
 			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
@@ -604,7 +596,7 @@
 		}
 
 		var limited = max < Math.max( 1, service.max_capacity );
-		return '<p class="tc-eyebrow">' + stepLabel( 'party' ) + '</p><h2 class="tc-title">How many people are you bringing?</h2>' +
+		return '<h2 class="tc-title">How many people are you bringing?</h2>' +
 			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony' +
 			( limited ? ' (limited availability on this date)' : '' ) + '. The base price is charged per person.</p>' +
 			'<div class="tc-party-row"><div><div class="en">Total in your group</div>' +
@@ -636,7 +628,7 @@
 				'</div>';
 		}
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'guests' ) + '</p><h2 class="tc-title">Your group’s details</h2>' +
+		return '<h2 class="tc-title">Your group’s details</h2>' +
 			'<p class="tc-sub">We need contact details for everyone joining you, so we can reach them if needed.</p>' +
 			blocks +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
@@ -686,13 +678,13 @@
 					'</div></div>';
 			} ).join( '' );
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'extras' ) + '</p><h2 class="tc-title">Extras &amp; quantity</h2>' + selectionSummary() + rows +
+		return '<h2 class="tc-title">Extras &amp; quantity</h2>' + selectionSummary() + rows +
 			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
 	}
 
 	function renderInfo() {
 		var i = state.info;
-		return '<p class="tc-eyebrow">' + stepLabel( 'details' ) + '</p><h2 class="tc-title">Your details</h2>' +
+		return '<h2 class="tc-title">Your details</h2>' +
 			field( 'firstName', 'First name', i.firstName, 'Jane' ) +
 			field( 'lastName', 'Last name', i.lastName, 'Doe' ) +
 			field( 'email', 'Email', i.email, 'jane@example.com', 'email' ) +
@@ -733,7 +725,7 @@
 			'<div class="tc-rline"><span class="l">Email</span><span>' + escapeHtml( state.info.email ) + '</span></div>' +
 			'<div class="tc-rline"><span class="l">Phone</span><span>' + escapeHtml( state.info.phone ) + '</span></div>';
 
-		return '<p class="tc-eyebrow">' + stepLabel( 'review' ) + '</p><h2 class="tc-title">Review your booking</h2>' +
+		return '<h2 class="tc-title">Review your booking</h2>' +
 			'<div class="tc-rline"><span class="l">Location</span><span>' + escapeHtml( loc.name ) + '</span></div>' +
 			( state.guide ? '<div class="tc-rline"><span class="l">Guide</span><span>' + escapeHtml( state.guide.name ) + '</span></div>' : '' ) +
 			'<div class="tc-rline"><span class="l">Ceremony</span><span>' + escapeHtml( service.name ) + '</span></div>' +

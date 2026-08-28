@@ -44,7 +44,6 @@ class TC_Booking_Shortcode {
 		return '<div id="tc-booking-root">' .
 			'<div class="tc-progress"><div class="seg done"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>' .
 			'<div class="tc-card tc-skeleton" aria-busy="true" aria-label="' . esc_attr__( 'Loading booking form…', 'tc-booking' ) . '">' .
-			'<div class="tc-skel-line tc-skel-eyebrow"></div>' .
 			'<div class="tc-skel-line tc-skel-title"></div>' .
 			'<div class="tc-skel-line tc-skel-sub"></div>' .
 			'<div class="tc-skel-block"></div>' .
