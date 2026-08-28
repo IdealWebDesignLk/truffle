@@ -365,16 +365,25 @@ class TC_Meta_Boxes {
 		// correct quoting, an array's own index markers (i:1;) can collide
 		// with a genuine value being searched for. One row per ID sidesteps
 		// the whole problem - see PROJECT_NOTES.md.
+		//
+		// WPML support: the "Locations covered" / "Services provided"
+		// checkboxes above list whichever language WPML's admin-side query
+		// filtering is currently showing, so the submitted IDs could be in
+		// any language. Always normalize to the default-language ID before
+		// storing (TC_WPML::to_default_language_id() is a no-op if WPML
+		// isn't active), so matching at booking time - which normalizes the
+		// same way, see TC_Availability::get_guides_for() - works
+		// regardless of which language this screen was edited in.
 		delete_post_meta( $post_id, '_tc_location_ids' );
 		$location_ids = isset( $_POST['tc_location_ids'] ) ? array_map( 'absint', (array) $_POST['tc_location_ids'] ) : array();
 		foreach ( $location_ids as $location_id ) {
-			add_post_meta( $post_id, '_tc_location_ids', $location_id );
+			add_post_meta( $post_id, '_tc_location_ids', TC_WPML::to_default_language_id( $location_id, TC_CPT::LOCATION ) );
 		}
 
 		delete_post_meta( $post_id, '_tc_service_ids' );
 		$service_ids = isset( $_POST['tc_service_ids'] ) ? array_map( 'absint', (array) $_POST['tc_service_ids'] ) : array();
 		foreach ( $service_ids as $service_id ) {
-			add_post_meta( $post_id, '_tc_service_ids', $service_id );
+			add_post_meta( $post_id, '_tc_service_ids', TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE ) );
 		}
 	}
 

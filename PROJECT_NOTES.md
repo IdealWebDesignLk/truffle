@@ -243,6 +243,61 @@ to the viewBox as described above. Don't hand-draw a country outline
 again, and don't run it through aggressive simplification without
 checking that every intended island survived.
 
+## WPML support
+
+Locations, Services, and Guides are content the customer reads, so they're
+registered translatable; Bookings are transactional records, not content,
+and stay untranslatable. This is declared in `wpml-config.xml` at the
+plugin root, which WPML reads automatically when active - no manual
+Post Types/Custom Fields Translation setup needed on the live site. See
+that file's comments for exactly which custom fields translate vs. copy,
+and why the extras repeater (`_tc_extras`, a serialized array) is set to
+copy-then-edit-directly rather than routed through WPML's string-based
+custom field translation editor.
+
+The one piece a config file can't handle: Guide<->Location/Service
+assignments (`_tc_location_ids` / `_tc_service_ids` on the Guide post,
+one meta row per ID - see the postmeta note above) are stored as raw post
+IDs, and WPML gives every translated post its own ID. Deliberately left
+out of `wpml-config.xml` (WPML's field actions assume a single
+string/scalar value, not a list of foreign-key IDs) and instead handled
+in code via `TC_WPML::to_default_language_id()`: every ID gets normalized
+to the site's default language before it's stored (`save_guide()` in
+`class-tc-meta-boxes.php`) or matched against stored values
+(`TC_Availability::get_guides_for()`, and the two guide-preview lookups in
+`class-tc-rest-api.php` that query `_tc_location_ids`/`_tc_service_ids`
+directly instead of going through that function). As long as both the
+write side and every read side normalize to the same target, matching
+works regardless of which language the admin was in, or which language a
+customer is browsing in - `get_guides_for()` is the one function every
+availability/booking code path already funnels through (see "The
+availability engine" above), so that's the single most load-bearing spot
+this needed to be right.
+
+Separately, a REST API request doesn't necessarily inherit the same
+language context a normal page load would (depends on WPML's URL format
+setting - directory, subdomain, or query parameter). Rather than guessing,
+the customer's current language is localized into `window.tcBooking.lang`
+(`class-tc-booking-shortcode.php`) and the front-end passes it back
+explicitly as `?lang=` on its three catalog requests (`/locations`,
+`/services`, `/guides` - see `withLang()` in `booking-app.js`); the
+matching REST callbacks call `TC_WPML::maybe_switch_language()` on it
+before querying. The availability endpoint doesn't need this itself - it
+fetches a specific `service_id` directly (language-agnostic once you have
+the ID) rather than running a fresh catalog query.
+
+Every `TC_WPML` method is a guarded no-op when WPML isn't active
+(`defined( 'ICL_SITEPRESS_VERSION' )` gates all of it) - verified via a
+standalone PHP script exercising the class directly (no WordPress
+available in this environment) that every value passes through unchanged
+and no WPML function is ever called in that case, since that's the
+overwhelming majority of installs and must never be at risk. **Not yet
+verified against a real WPML install** (this dev environment has no way to
+run one) - worth confirming end-to-end on a WPML-enabled staging site
+before relying on it in production, particularly the guide-assignment
+normalization, since that's the part most likely to have an edge case a
+static read-through can't catch.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
@@ -339,8 +394,6 @@ touching postmeta relationships.
     and exactly which date shows blocked afterward - since this is the
     piece of the build most explicitly flagged as bug-prone and "should
     never be forked" without being sure.
-- WPML wiring - the CPTs/fields exist but aren't yet registered with WPML's
-  translation config on the live site.
 - Reschedule admin UI is a plain `prompt()` for the new date (see
   `class-tc-admin-bookings.php`) - functional, not polished. A real
   date-picker modal is a good first improvement.

@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.16.0
+Stable tag: 0.17.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,21 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.17.0 =
+* Added WPML support. Locations, Services, and Guides are now registered
+  translatable (Bookings stay untranslatable - they're transactional
+  records, not content) via a new `wpml-config.xml`, which WPML reads
+  automatically - no manual setup needed on the live site. Guide<->
+  Location/Service assignments are stored by post ID, which WPML gives a
+  different ID per language, so those lookups (the guide-matching logic
+  every availability/booking check funnels through) now normalize IDs to
+  the site's default language before comparing, both when a Guide is
+  saved and when a booking is checked. The booking widget also passes its
+  active language back on its catalog requests, since a REST call doesn't
+  always carry the same language context a normal page load would. See
+  PROJECT_NOTES.md's new "WPML support" section for the full design and
+  what's not yet been verified against a real WPML install.
 
 = 0.16.0 =
 * The guide preview moved again: under the map on mobile, and under the

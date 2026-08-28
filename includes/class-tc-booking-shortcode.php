@@ -29,6 +29,12 @@ class TC_Booking_Shortcode {
 			array(
 				'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
 				'nonce'    => wp_create_nonce( 'wp_rest' ),
+				// WPML support - passed back on catalog requests
+				// (booking-app.js) so tc/v1 routes know which language to
+				// query in, since a REST request doesn't necessarily carry
+				// the same language context a normal page load would.
+				// Empty string (falsy) when WPML isn't active.
+				'lang'     => TC_WPML::current_language(),
 			)
 		);
 

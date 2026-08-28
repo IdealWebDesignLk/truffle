@@ -19,6 +19,15 @@
 
 	var API_ROOT = window.tcBooking.restRoot;
 	var NONCE    = window.tcBooking.nonce;
+	// WPML support - empty string (falsy) when WPML isn't active, or on a
+	// site that is but hasn't set a language yet; withLang() below is a
+	// no-op in that case.
+	var LANG     = window.tcBooking.lang || '';
+
+	function withLang( path ) {
+		if ( ! LANG ) return path;
+		return path + ( path.indexOf( '?' ) === -1 ? '?' : '&' ) + 'lang=' + encodeURIComponent( LANG );
+	}
 
 	var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 	var PHONE_RE = /^[0-9+()\-\s]{6,20}$/;
@@ -993,7 +1002,7 @@
 	/* Init                                                                 */
 	/* ------------------------------------------------------------------ */
 
-	Promise.all( [ apiGet( '/locations' ), apiGet( '/services' ), apiGet( '/guides' ) ] ).then( function ( results ) {
+	Promise.all( [ apiGet( withLang( '/locations' ) ), apiGet( withLang( '/services' ) ), apiGet( withLang( '/guides' ) ) ] ).then( function ( results ) {
 		state.locations        = results[ 0 ];
 		state.services         = results[ 1 ];
 		state.guidesByLocation = results[ 2 ];

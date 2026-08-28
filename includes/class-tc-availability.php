@@ -300,6 +300,14 @@ class TC_Availability {
 	 * @return int[] Guide post IDs covering this location AND this service.
 	 */
 	private static function get_guides_for( $location_id, $service_id ) {
+		// WPML support: $location_id/$service_id arrive in whatever
+		// language the customer is browsing in (or the admin dashboard's
+		// language), but _tc_location_ids/_tc_service_ids are always
+		// stored as default-language IDs (see save_guide() in
+		// class-tc-meta-boxes.php) - normalize here too so the match
+		// works regardless of language. No-op if WPML isn't active.
+		$location_id = TC_WPML::to_default_language_id( $location_id, TC_CPT::LOCATION );
+		$service_id  = TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE );
 		$guides = get_posts(
 			array(
 				'post_type'   => TC_CPT::GUIDE,

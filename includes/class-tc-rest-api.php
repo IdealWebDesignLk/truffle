@@ -196,7 +196,14 @@ class TC_Rest_Api {
 	/* Public: catalog                                                     */
 	/* ------------------------------------------------------------------ */
 
-	public static function get_locations() {
+	public static function get_locations( WP_REST_Request $request ) {
+		// WPML support: a REST request doesn't necessarily inherit the
+		// front-end's language context the way a normal page load does, so
+		// the booking widget passes its language back explicitly (see
+		// window.tcBooking.lang in class-tc-booking-shortcode.php) rather
+		// than relying on WPML to detect it. No-op if WPML isn't active or
+		// no lang was given.
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$posts = get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
 		$data  = array();
 		foreach ( $posts as $post ) {
@@ -212,7 +219,8 @@ class TC_Rest_Api {
 		return rest_ensure_response( $data );
 	}
 
-	public static function get_services() {
+	public static function get_services( WP_REST_Request $request ) {
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$posts = get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
 		$data  = array();
 		foreach ( $posts as $post ) {
@@ -234,8 +242,14 @@ class TC_Rest_Api {
 	}
 
 	public static function get_guide_for_location( WP_REST_Request $request ) {
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$location_id = absint( $request->get_param( 'location_id' ) );
 		$service_id  = absint( $request->get_param( 'service_id' ) );
+		// WPML support - see TC_Availability::get_guides_for()'s comment;
+		// same reasoning applies here since this queries _tc_location_ids/
+		// _tc_service_ids directly instead of going through that function.
+		$location_id = TC_WPML::to_default_language_id( $location_id, TC_CPT::LOCATION );
+		$service_id  = TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE );
 
 		$meta_query = array(
 			array( 'key' => '_tc_location_ids', 'value' => $location_id ),
@@ -282,17 +296,24 @@ class TC_Rest_Api {
 	 * page load instead of firing a fresh request on every pin/row click,
 	 * which was visibly slow (see GitHub issue #4).
 	 */
-	public static function get_guides_by_location() {
+	public static function get_guides_by_location( WP_REST_Request $request ) {
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$locations = get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'fields' => 'ids' ) );
 
 		$data = array();
 		foreach ( $locations as $location_id ) {
+			// WPML support - $location_id above is already in the
+			// customer's language (it's also the key this response is
+			// returned under, matched against /locations by the front
+			// -end), but the guide-matching lookup needs the default
+			// -language ID - see TC_Availability::get_guides_for().
+			$matched_location_id = TC_WPML::to_default_language_id( $location_id, TC_CPT::LOCATION );
 			$guides = get_posts(
 				array(
 					'post_type'   => TC_CPT::GUIDE,
 					'numberposts' => 1,
 					'meta_query'  => array(
-						array( 'key' => '_tc_location_ids', 'value' => (int) $location_id ),
+						array( 'key' => '_tc_location_ids', 'value' => $matched_location_id ),
 					),
 				)
 			);
