@@ -459,13 +459,17 @@
 
 		// GitHub issue #36 - the full guide card used to live above the map
 		// and pushed it down every time a guide loaded in, so it moved next
-		// to the heading instead. GitHub issue #42 - stays in that same row
-		// as "Pick a location", but its column now matches the map
-		// column's own width/position below (.tc-loc-header uses the same
-		// flex:1 1 0 two-column split, same gap, as .tc-loc-layout - see
-		// the CSS - so the two right-hand columns line up exactly), instead
-		// of a small compact box. Kept the "Read more" popup
-		// (renderGuideInfoModal()) and the bio preview from #39.
+		// to the heading instead (#42), then had its column matched to the
+		// map's (#36/#42's follow-ups). GitHub issues #54/#55 move it again:
+		// under the map on mobile, under the location list on desktop (with
+		// the map moved flush to the top of that column, no gap where the
+		// guide box used to sit in the heading row). Rather than rendering
+		// it twice for the two breakpoints, it's now a single grid item -
+		// .tc-loc-layout below is a CSS grid whose grid-template-areas
+		// differs per breakpoint (see the CSS), placing this same element
+		// wherever each breakpoint wants it without duplicating markup.
+		// Kept the "Read more" popup (renderGuideInfoModal()) and the bio
+		// preview from #39.
 		var guideMini = '';
 		if ( loc && state.guide ) {
 			var photoInner = state.guide.photo
@@ -479,23 +483,20 @@
 				'</div>';
 		}
 
-		return '<div class="tc-loc-header">' +
-			'<div class="tc-loc-header-text"><p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
+		return '<p class="tc-eyebrow">' + stepLabel( 'location' ) + '</p>' +
 			'<h2 class="tc-title">Pick a location</h2>' +
-			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p></div>' +
-			guideMini +
-			'</div>' +
-			// GitHub issue #24 - map/list wrapped as two columns so CSS can
-			// put the map on the right and the list on the left on desktop
-			// (row-reverse, so mobile's stacked map-then-list DOM order is
-			// untouched); issue #25 - larger .tc-map-svg cap lets the map
-			// grow bigger in that wider column.
+			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p>' +
+			// GitHub issue #24 - map/list wrapped as a grid so CSS can put
+			// the map on the right and the list on the left on desktop;
+			// issue #25 - larger .tc-map-svg cap lets the map grow bigger in
+			// that wider column.
 			'<div class="tc-loc-layout">' +
 			'<div class="tc-loc-map-col">' +
 			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="' + viewBox + '" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
 			'<path class="tc-map-outline" d="' + NL_OUTLINE + '"></path>' + pins + '</svg>' +
 			'<p class="tc-map-caption">Tap a pin, or pick from the list</p></div>' +
 			'</div>' +
+			guideMini +
 			'<div class="tc-loc-list-col"><div class="tc-loc-list">' + list + '</div></div>' +
 			'</div>' +
 			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>Continue</button></div>';

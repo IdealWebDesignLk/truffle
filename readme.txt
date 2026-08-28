@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.15.0
+Stable tag: 0.16.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,20 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.16.0 =
+* The guide preview moved again: under the map on mobile, and under the
+  location list on desktop, with the map now starting flush at the top
+  of its column (no gap where the guide box used to sit in the heading
+  row above it). The location step's layout is now a single CSS grid
+  with named areas that differ per breakpoint, so the same guide-preview
+  element can reposition without being rendered twice - this also
+  removes the earlier flex-basis alignment workaround entirely, since
+  grid placement doesn't have that quirk. Resolves GitHub issues #54
+  and #55.
+* Ceremony cards (Step 2) use smaller padding/font on mobile, so more of
+  the calendar underneath is visible without scrolling. Resolves GitHub
+  issue #56.
 
 = 0.15.0 =
 * Locations (Step 1) and ceremony cards (Step 2) now stay two columns on
