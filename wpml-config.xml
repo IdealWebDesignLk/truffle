@@ -4,35 +4,34 @@
   is active, to pre-fill Post Types Translation / Custom Fields Translation
   settings instead of requiring an admin to configure each one by hand.
 
-  Locations, Services, and Guides are content the customer reads, so they're
-  translatable. Bookings are transactional records (a specific customer's
-  specific booking), not content - not translatable, and not offered in the
-  translation queue at all (action="0" hides it there, vs the more common
-  "1"/"2" for optional).
+  Services and Guides are content the customer reads, so they're
+  translatable. Locations are addresses/coordinates, not content that reads
+  differently per language (GitHub issue #65), so - like Bookings, which are
+  transactional records, not content - they're not translatable, and not
+  offered in the translation queue at all (action="0" hides it there, vs the
+  more common "1"/"2" for optional).
 
   _tc_location_ids / _tc_service_ids (Guide <-> Location/Service
   assignments, stored as one meta row per ID) are deliberately NOT listed
   here - they're post-ID references, not translatable content, and
-  WPML's field actions are designed for single string/scalar values. Left
-  at WPML's default (copied as-is when a Guide is duplicated for
-  translation), with the actual cross-language correctness handled in code
-  instead - see TC_WPML::to_default_language_id() and its call sites in
-  class-tc-meta-boxes.php (save_guide()) and class-tc-availability.php
-  (get_guides_for()).
+  WPML's field actions are designed for single string/scalar values.
+  Handled in code instead - see TC_WPML::to_default_language_id() and its
+  call sites in class-tc-meta-boxes.php (save_guide()) and
+  class-tc-availability.php (get_guides_for()). Locations being
+  non-translatable means that normalization is a no-op for
+  _tc_location_ids specifically (one canonical ID regardless of
+  language), but the code doesn't need to know or care about that - it
+  stays correct either way, and _tc_service_ids still needs it since
+  Services are translatable.
 -->
 <wpml-config>
 	<custom-types>
-		<custom-type translate="1">tc_location</custom-type>
+		<custom-type translate="0">tc_location</custom-type>
 		<custom-type translate="1">tc_service</custom-type>
 		<custom-type translate="1">tc_guide</custom-type>
 		<custom-type translate="0">tc_booking</custom-type>
 	</custom-types>
 	<custom-fields>
-		<!-- Location -->
-		<custom-field action="translate">_tc_address</custom-field>
-		<custom-field action="translate">_tc_province</custom-field>
-		<custom-field action="copy">_tc_lat</custom-field>
-		<custom-field action="copy">_tc_lng</custom-field>
 		<!-- Service -->
 		<custom-field action="copy">_tc_price</custom-field>
 		<custom-field action="copy">_tc_duration_days</custom-field>

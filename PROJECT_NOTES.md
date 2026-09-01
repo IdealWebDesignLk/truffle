@@ -245,10 +245,13 @@ checking that every intended island survived.
 
 ## WPML support
 
-Locations, Services, and Guides are content the customer reads, so they're
-registered translatable; Bookings are transactional records, not content,
-and stay untranslatable. This is declared in `wpml-config.xml` at the
-plugin root, which WPML reads automatically when active - no manual
+Services and Guides are content the customer reads, so they're registered
+translatable; Locations are addresses/coordinates rather than content that
+reads differently per language (client call, GitHub issue #65 - originally
+shipped translatable, reverted), and Bookings are transactional records,
+not content - both stay untranslatable. This is declared in
+`wpml-config.xml` at the plugin root, which WPML reads automatically when
+active - no manual
 Post Types/Custom Fields Translation setup needed on the live site. See
 that file's comments for exactly which custom fields translate vs. copy,
 and why the extras repeater (`_tc_extras`, a serialized array) is set to
@@ -272,7 +275,13 @@ works regardless of which language the admin was in, or which language a
 customer is browsing in - `get_guides_for()` is the one function every
 availability/booking code path already funnels through (see "The
 availability engine" above), so that's the single most load-bearing spot
-this needed to be right.
+this needed to be right. Now that Locations are registered
+non-translatable (see above), `to_default_language_id()` is effectively a
+no-op for `_tc_location_ids` specifically - `wpml_object_id` just hands
+back the same ID, since there's only ever one canonical Location post
+regardless of language - but the code doesn't need to know or care about
+that; it stays correct either way, and `_tc_service_ids` still needs the
+normalization since Services remain translatable.
 
 Separately, a REST API request doesn't necessarily inherit the same
 language context a normal page load would (depends on WPML's URL format
