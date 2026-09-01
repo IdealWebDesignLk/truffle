@@ -307,6 +307,21 @@ before relying on it in production, particularly the guide-assignment
 normalization, since that's the part most likely to have an edge case a
 static read-through can't catch.
 
+**One real gotcha already surfaced on the live site**: when a post type
+that already has content newly becomes translatable (as Services did in
+0.17.0), WPML needs every existing post explicitly assigned a language -
+this isn't automatic just because the type is now registered translatable.
+A post that's missed this shows up inconsistently: it's excluded from
+wp-admin's list when filtered to a specific language (e.g. "English (4)"
+instead of "All (5)"), but WPML's default handling of language-unassigned
+content still shows it on the front-end regardless of language, so
+customers see the correct full catalog while the admin list looks like
+something's missing. Not a plugin bug - fix is on the WPML side: in
+wp-admin, switch the Services list to "All", find the post lacking a
+language flag, and assign one via WPML's language column. Worth checking
+for after any future post type is newly made translatable, if this
+happens again.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
