@@ -221,7 +221,12 @@ class TC_Rest_Api {
 
 	public static function get_services( WP_REST_Request $request ) {
 		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
-		$posts = get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+		// GitHub issue #64 - services now sort by the "Order" field (see
+		// TC_CPT::register_service()'s 'page-attributes' support) first,
+		// falling back to title for any tied/unset (default 0) order
+		// values, so a fresh service without an explicit order still sorts
+		// predictably relative to other unordered ones.
+		$posts = get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => array( 'menu_order' => 'ASC', 'title' => 'ASC' ) ) );
 		$data  = array();
 		foreach ( $posts as $post ) {
 			$service  = TC_Availability::get_service_data( $post->ID );

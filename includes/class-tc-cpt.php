@@ -94,7 +94,14 @@ class TC_CPT {
 				'public'             => false,
 				'show_ui'            => true,
 				'show_in_menu'       => 'edit.php?post_type=' . self::BOOKING,
-				'supports'           => array( 'title', 'editor' ), // editor = short customer-facing description
+				// 'page-attributes' adds the standard WordPress "Order" field
+				// (menu_order) to the edit screen, so admins can control the
+				// sequence services appear in on the front-end - see the
+				// 'orderby' used in TC_Rest_Api::get_services(). GitHub issue
+				// #64 asked for a specific display order; before this there
+				// was no way to set one at all (front-end was always
+				// alphabetical by title).
+				'supports'           => array( 'title', 'editor', 'page-attributes' ), // editor = short customer-facing description
 				'show_in_rest'       => false,
 				'exclude_from_search' => true,
 				'publicly_queryable' => false,
