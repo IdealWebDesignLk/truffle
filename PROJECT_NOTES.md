@@ -455,6 +455,94 @@ literal, every template's placeholders substitute correctly, and dates/
 prices render in Dutch locale format (`jsLocale()` returning `'nl-NL'`)
 with no console errors at any step.
 
+**0.24.0 - source strings are Dutch, not English**: after 0.23.0 shipped,
+the live site's WPML default language turned out to be Dutch, and this
+surfaced a mismatch that actually applied to *every* piece of text this
+plugin has ever registered with WPML, not just the widget's `i18n` array
+- WPML's String Translation always stores whatever value is passed to
+`__()` / `wpml_register_single_string` as the **default language**'s
+content; it has no notion of "this text happens to be written in
+English." With the default language set to Dutch, every English string
+this plugin registered was effectively being told "this Dutch text is in
+English," so Dutch visitors - the site's main audience - saw raw
+untranslated English everywhere, and would have needed a manually-added
+"Dutch translation" of English source text to see it correctly, which is
+backwards.
+
+Fixed by writing every customer-facing string's *source* text in Dutch
+instead of English, matching the site's actual WPML default language, so
+Dutch visitors need zero String Translation entries and English/German
+become the genuine translations added under WPML -> String Translation -
+same principle as 0.23.0, just corrected to the right source language.
+This touched:
+- The `i18n` array in `class-tc-booking-shortcode.php` (0.23.0's ~70
+  widget UI strings) and the loading-skeleton's `aria-label`.
+- Customer-facing REST error messages in `class-tc-rest-api.php`:
+  `get_availability()`'s date-range errors and every validation/failure
+  message in `create_booking()` (missing fields, invalid email, unknown
+  service, date no longer available, no guide available, booking
+  creation failed).
+- Booking confirmation/cancellation/reschedule email subject+body text in
+  `class-tc-notifications.php` (customer copy only - the admin-notice
+  copy in `send_confirmation()` deliberately stays in whatever language
+  is already active, normally Dutch, since it always goes to the site's
+  own `admin_email` and isn't meant to follow the customer).
+- The WooCommerce order line-item label built in
+  `class-tc-woocommerce.php`'s `create_order_for_booking()` (the
+  no-placeholder-words variant, `'%1$s (%2$s)'`, needed no translation -
+  it's already language-neutral). The admin-only order note listing
+  additional guests, and the "Cancelled from TC Booking admin." order
+  note, stay in English deliberately - both are private
+  WooCommerce order notes never shown to the customer.
+
+Admin-facing text (post type labels, meta box titles, admin list
+columns, wp-admin confirm dialogs in `class-tc-cpt.php`,
+`class-tc-meta-boxes.php`, `class-tc-admin-bookings.php`) was
+deliberately left in English - wp-admin's language follows the logged-in
+admin user's own WordPress profile locale setting, a completely
+different mechanism from WPML's front-end default language, so it isn't
+affected by this bug and doesn't need this fix.
+
+Two REST endpoints didn't have a way to know the customer's language at
+all and needed wiring, not just translated strings:
+- `get_availability()` and `create_booking()` never called
+  `TC_WPML::maybe_switch_language()`, unlike the four GET catalog
+  routes - so their error messages were relying on whatever WPML
+  resolves as "current language" for a bare REST request, which the
+  existing code comments already flagged as unreliable. Fixed by adding
+  the same `maybe_switch_language( $request->get_param( 'lang' ) )` call
+  used everywhere else, and updating `booking-app.js` to send `?lang=`
+  on `/availability` (`loadGrid()`) and `/bookings`
+  (`submitBooking()`) via the existing `withLang()` helper - both
+  previously omitted it.
+- Confirmation/cancellation/reschedule emails are a harder case: they're
+  sent from `TC_Woocommerce::sync_booking_from_order()`, hooked to
+  `woocommerce_order_status_changed` - a *separate*, later HTTP request
+  (the customer completing WooCommerce checkout, or an async payment
+  gateway webhook) with no language context of its own at all. Switching
+  language during the original `/bookings` request wouldn't help here.
+  Fixed by capturing the customer's language at booking time
+  (`_tc_customer_lang` post meta, set in `create_booking()` right after
+  it calls `maybe_switch_language()`) and having each of
+  `TC_Notifications`'s three `send_*()` methods explicitly switch to
+  that stored language (via `booking_context()`, which now also returns
+  `'lang'`) before building the email - regardless of what triggered the
+  send (a webhook, a normal checkout page load, or staff clicking
+  cancel/reschedule in wp-admin, which also fires these methods and
+  previously would've built the email in the *admin's* current
+  language, not the customer's).
+
+Verified with the same browser-harness approach as 0.23.0 - re-ran the
+full location -> service -> party -> extras -> details -> review ->
+submit flow against Dutch source strings, confirmed the rendered text is
+now correctly Dutch throughout, and confirmed via `window.__lastFetch`
+that both `/availability` and `/bookings` now carry `?lang=nl`. Email
+sending and the WooCommerce order-status-hook path could not be
+exercised in this harness (no live WordPress/WooCommerce available) -
+worth confirming on staging that a booking's confirmation email actually
+arrives in the language it was booked in, especially for the async
+payment-webhook path where the language-persistence fix matters most.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

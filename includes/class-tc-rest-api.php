@@ -384,19 +384,25 @@ class TC_Rest_Api {
 	}
 
 	public static function get_availability( WP_REST_Request $request ) {
+		// WPML support - error messages below are customer-facing (shown as
+		// state.error in booking-app.js), so need the customer's actual
+		// language, not whatever WPML resolves as "current" for a REST
+		// request by default - see the ?lang= comment on the other GET
+		// routes above.
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$service_id  = absint( $request->get_param( 'service_id' ) );
 		$location_id = absint( $request->get_param( 'location_id' ) );
 		$start       = self::sanitize_date( $request->get_param( 'start' ) );
 		$end         = self::sanitize_date( $request->get_param( 'end' ) );
 
 		if ( ! $start || ! $end ) {
-			return new WP_Error( 'tc_invalid_date', __( 'Invalid start/end date.', 'tc-booking' ), array( 'status' => 400 ) );
+			return new WP_Error( 'tc_invalid_date', __( 'Ongeldige begin-/einddatum.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
 		// Cap the range so a malicious/buggy client can't force a huge scan.
 		$span = ( new DateTime( $start ) )->diff( new DateTime( $end ) )->days;
 		if ( $span > 120 ) {
-			return new WP_Error( 'tc_range_too_large', __( 'Date range too large.', 'tc-booking' ), array( 'status' => 400 ) );
+			return new WP_Error( 'tc_range_too_large', __( 'Periode te lang.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
 		return rest_ensure_response( TC_Availability::get_grid( $service_id, $location_id, $start, $end ) );
@@ -407,6 +413,15 @@ class TC_Rest_Api {
 	/* ------------------------------------------------------------------ */
 
 	public static function create_booking( WP_REST_Request $request ) {
+		// WPML support - error messages below are customer-facing, and this
+		// also determines the language stored as _tc_customer_lang further
+		// down (used later by TC_Notifications to send the confirmation/
+		// cancellation/reschedule emails in the customer's own language,
+		// since those fire from a WooCommerce order-status hook in a later,
+		// separate request with no language context of its own) and the
+		// language WooCommerce order line items (TC_Woocommerce::
+		// create_order_for_booking(), called synchronously below) render in.
+		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
 		$params      = $request->get_json_params();
 		$service_id  = isset( $params['service_id'] ) ? absint( $params['service_id'] ) : 0;
 		$location_id = isset( $params['location_id'] ) ? absint( $params['location_id'] ) : 0;
@@ -419,44 +434,44 @@ class TC_Rest_Api {
 
 		$missing = array();
 		if ( ! $service_id ) {
-			$missing[] = __( 'service', 'tc-booking' );
+			$missing[] = __( 'dienst', 'tc-booking' );
 		}
 		if ( ! $location_id ) {
-			$missing[] = __( 'location', 'tc-booking' );
+			$missing[] = __( 'locatie', 'tc-booking' );
 		}
 		if ( ! $date ) {
-			$missing[] = __( 'date', 'tc-booking' );
+			$missing[] = __( 'datum', 'tc-booking' );
 		}
 		if ( ! $first_name ) {
-			$missing[] = __( 'first name', 'tc-booking' );
+			$missing[] = __( 'voornaam', 'tc-booking' );
 		}
 		if ( ! $email ) {
-			$missing[] = __( 'email', 'tc-booking' );
+			$missing[] = __( 'e-mail', 'tc-booking' );
 		}
 		if ( $missing ) {
 			return new WP_Error(
 				'tc_missing_fields',
 				sprintf(
 					/* translators: %s: comma-separated list of missing field names */
-					__( 'Missing required booking fields: %s.', 'tc-booking' ),
+					__( 'Verplichte boekingsgegevens ontbreken: %s.', 'tc-booking' ),
 					implode( ', ', $missing )
 				),
 				array( 'status' => 400 )
 			);
 		}
 		if ( ! is_email( $email ) ) {
-			return new WP_Error( 'tc_invalid_email', __( 'Invalid email address.', 'tc-booking' ), array( 'status' => 400 ) );
+			return new WP_Error( 'tc_invalid_email', __( 'Ongeldig e-mailadres.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
 		$service = TC_Availability::get_service_data( $service_id );
 		if ( ! $service ) {
-			return new WP_Error( 'tc_invalid_service', __( 'Unknown service.', 'tc-booking' ), array( 'status' => 400 ) );
+			return new WP_Error( 'tc_invalid_service', __( 'Onbekende dienst.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
 		// Re-validate availability server-side - the front-end grid can be
 		// stale by the time checkout happens, this check cannot be skipped.
 		if ( ! TC_Availability::is_bookable( $service_id, $location_id, $date ) ) {
-			return new WP_Error( 'tc_not_available', __( 'That date is no longer available. Please pick another date.', 'tc-booking' ), array( 'status' => 409 ) );
+			return new WP_Error( 'tc_not_available', __( 'Deze datum is niet meer beschikbaar. Kies een andere datum.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
 		// "Bring anyone with you" (GitHub issue #6) party size is computed
@@ -541,7 +556,7 @@ class TC_Rest_Api {
 		// services - see TC_Availability::pick_guide().
 		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $date, $party_size );
 		if ( ! $guide_id ) {
-			return new WP_Error( 'tc_no_guide', __( 'No guide available for that date.', 'tc-booking' ), array( 'status' => 409 ) );
+			return new WP_Error( 'tc_no_guide', __( 'Geen gids beschikbaar op deze datum.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
 		// Base price is only multiplied by party size for services that opt
@@ -559,7 +574,7 @@ class TC_Rest_Api {
 			)
 		);
 		if ( is_wp_error( $booking_id ) ) {
-			return new WP_Error( 'tc_booking_failed', __( 'Could not create booking.', 'tc-booking' ), array( 'status' => 500 ) );
+			return new WP_Error( 'tc_booking_failed', __( 'Boeking kon niet worden aangemaakt.', 'tc-booking' ), array( 'status' => 500 ) );
 		}
 
 		update_post_meta( $booking_id, '_tc_service_id', $service_id );
@@ -575,6 +590,11 @@ class TC_Rest_Api {
 		update_post_meta( $booking_id, '_tc_customer_email', $email );
 		update_post_meta( $booking_id, '_tc_customer_phone', $phone );
 		update_post_meta( $booking_id, '_tc_total', $total );
+		// WPML support - remembered so TC_Notifications can send the
+		// confirmation/cancellation/reschedule emails in the customer's own
+		// language later, from a WooCommerce order-status hook that has no
+		// language context of its own (see the comment on this method).
+		update_post_meta( $booking_id, '_tc_customer_lang', TC_WPML::current_language() );
 
 		$order = TC_Woocommerce::create_order_for_booking( $booking_id );
 		if ( is_wp_error( $order ) ) {

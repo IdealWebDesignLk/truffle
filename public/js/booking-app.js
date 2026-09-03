@@ -993,8 +993,8 @@
 		render();
 		var bounds = monthBoundsFromOffset( state.monthOffset );
 
-		apiGet( '/availability?service_id=' + requestedService + '&location_id=' + state.locationId +
-			'&start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
+		apiGet( withLang( '/availability?service_id=' + requestedService + '&location_id=' + state.locationId +
+			'&start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) ) )
 			.then( function ( rows ) {
 				if ( requestedService !== state.serviceId ) return;
 				state.grid        = rows;
@@ -1021,7 +1021,7 @@
 			return { key: k, qty: state.extraQty[ k ] };
 		} );
 
-		apiPost( '/bookings', {
+		apiPost( withLang( '/bookings' ), {
 			service_id: state.serviceId,
 			location_id: state.locationId,
 			date: state.date,

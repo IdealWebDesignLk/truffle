@@ -50,8 +50,15 @@ class TC_Woocommerce {
 		$party_multiplier = $service['allow_party'] ? $party_size : 1;
 		$fee_label         = ( $service['allow_party'] && $party_size > 1 )
 			? sprintf(
+				// WPML support - Dutch (this site's WPML default language),
+				// not English, for the reason explained at the top of the
+				// i18n array in class-tc-booking-shortcode.php. This runs
+				// inside create_order_for_booking(), called synchronously
+				// from TC_Rest_Api::create_booking() after that switches to
+				// the customer's language (see its maybe_switch_language()
+				// call), so this is correctly localized per booking.
 				/* translators: 1: service name, 2: date, 3: number of people */
-				__( '%1$s (%2$s) × %3$d people', 'tc-booking' ),
+				__( '%1$s (%2$s) × %3$d personen', 'tc-booking' ),
 				$service['name'],
 				$date,
 				$party_size
