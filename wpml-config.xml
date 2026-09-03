@@ -4,65 +4,65 @@
   is active, to pre-fill Post Types Translation settings instead of
   requiring an admin to configure each one by hand.
 
-  Locations and Bookings are not translatable (translate="0"): Locations
-  are addresses/coordinates, not content that reads differently per
-  language (GitHub issue #65); Bookings are transactional records, not
-  content at all.
+  All four post types are non-translatable (translate="0") - a single
+  canonical post per location/service/guide/booking, never duplicated per
+  language. This took two attempts to get right, worth recording so it
+  doesn't get re-litigated:
 
-  Services and Guides are set to "Display as Translated" (translate="2"),
-  NOT "Translatable" (translate="1") - this was the actual bug behind
-  GitHub's WPML-structure report: "Translatable" makes WPML create a
-  SEPARATE post (a separate ID) per language. That's fine for ordinary
-  content, but wrong here, because:
+  1. Services and Guides were originally registered fully "Translatable"
+     (translate="1"). That makes WPML create a SEPARATE post - a separate
+     ID - per language, which is fine for ordinary content but wrong
+     here: a Guide post isn't just content, it's tied to a stateful
+     availability calendar (wp_tc_guide_availability, keyed by that
+     post's ID) and to one specific WordPress login account
+     (_tc_user_id). With three duplicate posts per guide, the calendar a
+     guide manages through their own dashboard lived under ONE language's
+     post ID, while a customer booking in a different language resolved
+     a DIFFERENT post ID for "the same" guide - so a guide blocking a
+     date only actually blocked it on one language version of the site.
+  2. The fix attempt was "Display as Translated" (translate="2"), WPML's
+     documented mode for "one canonical post, translator can still
+     provide per-language title/content." Turned out this site's WPML
+     Post Types Translation screen doesn't actually offer that as a
+     choice for custom post types - only two flavors of full duplication
+     ("Translatable - only show translated items" / "...or fall back to
+     default language") or fully non-translatable. Confirmed by directly
+     testing: switching to translate="2" in this file, then translating a
+     Guide through wp-admin, still created a brand new duplicate post.
 
-  - A Guide post isn't just content - it's tied to a stateful
-    availability calendar (wp_tc_guide_availability, keyed by that post's
-    ID - see class-tc-availability.php) and to one specific WordPress
-    login account (_tc_user_id). With three duplicate posts per guide
-    (one per language), the calendar a guide manages through their own
-    dashboard lives under ONE language's post ID, while a customer
-    booking in a different language resolves a DIFFERENT post ID for
-    "the same" guide - so blocked dates never stayed in sync between
-    languages. This is exactly what was reported.
-  - Guide<->Location/Service assignments (_tc_location_ids /
-    _tc_service_ids) are post-ID references. Under "Translatable" they'd
-    need to be re-resolved per language on every read/write (see
-    TC_WPML::to_default_language_id() below) just to work around IDs that
-    should never have differed in the first place.
+  Given "Display as Translated" isn't actually available, Service and
+  Guide are now translate="0" like Location and Booking always were - a
+  single, permanent, canonical post, guaranteed no duplication under any
+  WPML setting on this site. Per-language TEXT (a guide's name/bio, a
+  service's name/description, each extra's label/description) is instead
+  registered with WPML's *String Translation* module at read time -
+  TC_WPML::translate_string() in class-tc-wpml.php, called from
+  TC_Rest_Api::get_services() / get_guide_for_location() /
+  get_guides_by_location() - which translates a specific string
+  independently of any post, with no duplication possible by
+  construction. A translator fills these in under WPML -> String
+  Translation, grouped under the "TC Booking Services" / "TC Booking
+  Guides" / "TC Booking Extras" contexts.
 
-  "Display as Translated" keeps a SINGLE canonical post - one ID, one
-  calendar, one set of location/service assignments - while still
-  letting a translator provide a per-language title and content (WPML's
-  own Translation Editor handles this without creating a duplicate
-  wp_posts row). That single-ID guarantee is also why
-  TC_WPML::to_default_language_id() (class-tc-wpml.php, called from
-  save_guide() in class-tc-meta-boxes.php and get_guides_for() in
-  class-tc-availability.php) is now a no-op for every post type this
-  plugin registers - Location and Booking were already untranslatable,
-  and Service/Guide no longer duplicate either. Left in place as a
-  harmless defensive layer rather than ripped out, in case that
-  assumption ever needs revisiting.
+  That single-post guarantee is also why TC_WPML::to_default_language_id()
+  (used from save_guide() in class-tc-meta-boxes.php and get_guides_for()
+  in class-tc-availability.php, for the Guide<->Location/Service ID
+  assignments) is now a no-op for every post type this plugin registers.
+  Left in place as a harmless defensive layer rather than ripped out.
 
-  Known limitation: the extras repeater (_tc_extras on Service, a
-  serialized array of label/price/max/description per row) has no
-  per-language text of its own under this setup - it shows the same
-  values in every language. WPML's field-translation tools are built for
-  plain string values, not structured array data, so there's no clean
-  way to route this through WPML as-is. If per-language extras text is
-  needed later, that's a plugin feature to build (e.g. storing each
-  extra's label/description as an array keyed by language code), not a
-  WPML configuration change.
-
-  Not yet verified against a real WPML install (this dev environment has
-  no way to run one) - PROJECT_NOTES.md's "WPML support" section has the
-  full history, including what to double-check first on a WPML-enabled
-  staging site.
+  Verified end-to-end on the live/staging site for the "translation still
+  creates a duplicate post" failure mode (that's what caught mistake #2
+  above). NOT yet verified that WPML's String Translation module
+  correctly picks up and serves the wpml_register_string /
+  wpml_translate_single_string calls this plugin now makes - that's the
+  next thing to confirm on a WPML-enabled staging site. See
+  PROJECT_NOTES.md's "WPML support" section for the full history.
 -->
 <wpml-config>
 	<custom-types>
 		<custom-type translate="0">tc_location</custom-type>
-		<custom-type translate="2">tc_service</custom-type>
-		<custom-type translate="2">tc_guide</custom-type>
+		<custom-type translate="0">tc_service</custom-type>
+		<custom-type translate="0">tc_guide</custom-type>
 		<custom-type translate="0">tc_booking</custom-type>
 	</custom-types>
 </wpml-config>

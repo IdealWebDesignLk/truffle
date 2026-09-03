@@ -301,14 +301,13 @@ class TC_Availability {
 	 */
 	private static function get_guides_for( $location_id, $service_id ) {
 		// WPML support: kept as a defensive layer, though it's a no-op in
-		// practice now - Location/Service/Guide are all either
-		// non-translatable or "Display as Translated" (wpml-config.xml),
-		// so none of them duplicate posts per language anymore, meaning
-		// $location_id/$service_id are already the single canonical ID
-		// regardless of which language the request is in. See
-		// PROJECT_NOTES.md's "WPML support" section for why full
-		// "Translatable" mode was wrong for Guide specifically (it broke
-		// guide-dashboard calendar syncing across languages).
+		// practice now - Location, Service, and Guide are all
+		// non-translatable (wpml-config.xml), so none of them duplicate
+		// posts per language, meaning $location_id/$service_id are already
+		// the single canonical ID regardless of which language the
+		// request is in. See PROJECT_NOTES.md's "WPML support" section for
+		// why full "Translatable" mode was wrong for Guide specifically
+		// (it broke guide-dashboard calendar syncing across languages).
 		$location_id = TC_WPML::to_default_language_id( $location_id, TC_CPT::LOCATION );
 		$service_id  = TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE );
 		$guides = get_posts(

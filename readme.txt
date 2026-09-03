@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.21.0
+Stable tag: 0.22.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,31 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.22.0 =
+* Corrected the 0.21.0 WPML fix: "Display as Translated" turned out not
+  to be an actual selectable option for custom post types on this
+  site's WPML setup (its Post Types Translation screen only offers two
+  flavors of full duplication, or fully non-translatable) - confirmed
+  by directly testing it, which still created a duplicate post on
+  translation. Services and Guides (along with Locations and Bookings,
+  already non-translatable) are now *all* non-translatable, so no post
+  type this plugin registers can ever duplicate per language, under any
+  WPML setting. Per-language text - a guide's name/bio, a service's
+  name/description, each extra's label/description - is now handled
+  through WPML's separate String Translation module instead (WPML ->
+  String Translation, grouped under "TC Booking Services" / "TC Booking
+  Guides" / "TC Booking Extras"), which translates that text
+  independently of the post itself.
+  **If your site's WPML Post Types Translation settings still show
+  Service or Guide as "Translatable" (from before 0.21.0, or briefly on
+  0.21.0's "Display as Translated"), this update's config alone may not
+  retroactively change that stored setting - check WPML -> Settings ->
+  Post Types Translation and set both to "Not translatable" by hand if
+  needed.** Any duplicate posts WPML already created for a Guide or
+  Service (including while testing 0.21.0's fix) still need manual
+  cleanup - delete the extra per-language copies, keep the original.
+  See PROJECT_NOTES.md's "WPML support" section for the full history.
 
 = 0.21.0 =
 * Fixed the actual WPML structural bug behind guide calendars not

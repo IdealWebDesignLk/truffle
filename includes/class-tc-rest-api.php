@@ -181,20 +181,20 @@ class TC_Rest_Api {
 		if ( ! $user_id ) {
 			return null;
 		}
-		// GitHub - WPML structure fix: Guide is now "Display as Translated"
-		// (wpml-config.xml), not fully "Translatable", so there's only ever
-		// one canonical Guide post per _tc_user_id going forward. Ordering
-		// by ID is a defensive leftover for sites upgrading from before
-		// that fix, where WPML had created a duplicate post per language
-		// (all sharing the same _tc_user_id via the old "copy" custom
-		// -field action) - with no explicit order, this query previously
-		// picked WP_Query's default (newest first), which could resolve a
-		// different post than whichever one the customer-facing booking
-		// flow was matching, and was the actual cause of a guide's own
-		// -dashboard calendar changes not appearing consistently across
-		// languages. Oldest-ID-first is the best available guess at "the
-		// original, non-duplicate post" until any leftover duplicates are
-		// manually cleaned up on affected sites.
+		// GitHub - WPML structure fix: Guide is now non-translatable
+		// (wpml-config.xml), so there's only ever one canonical Guide post
+		// per _tc_user_id going forward. Ordering by ID is a defensive
+		// leftover for sites upgrading from before that fix, where WPML
+		// had created a duplicate post per language (all sharing the same
+		// _tc_user_id via the old "copy" custom-field action) - with no
+		// explicit order, this query previously picked WP_Query's default
+		// (newest first), which could resolve a different post than
+		// whichever one the customer-facing booking flow was matching, and
+		// was the actual cause of a guide's own-dashboard calendar changes
+		// not appearing consistently across languages. Oldest-ID-first is
+		// the best available guess at "the original, non-duplicate post"
+		// until any leftover duplicates are manually cleaned up on
+		// affected sites.
 		$guides = get_posts(
 			array(
 				'post_type'   => TC_CPT::GUIDE,
@@ -255,18 +255,33 @@ class TC_Rest_Api {
 			if ( $location_id && ! TC_Availability::service_available_at_location( $location_id, $post->ID ) ) {
 				continue;
 			}
-			$service  = TC_Availability::get_service_data( $post->ID );
-			$data[]   = array(
+			$service = TC_Availability::get_service_data( $post->ID );
+			// WPML support - Service is non-translatable (single canonical
+			// post, wpml-config.xml), so its name/description/extras text
+			// is translated as standalone strings instead (WPML -> String
+			// Translation), independent of the post itself. See
+			// TC_WPML::translate_string(). $post->ID is included in each
+			// string's name so it stays stable across requests but unique
+			// per service.
+			$extras = array_map(
+				function ( $extra ) use ( $post ) {
+					$extra['label']       = TC_WPML::translate_string( 'TC Booking Extras', 'service_' . $post->ID . '_extra_' . $extra['key'] . '_label', $extra['label'] );
+					$extra['description'] = TC_WPML::translate_string( 'TC Booking Extras', 'service_' . $post->ID . '_extra_' . $extra['key'] . '_description', $extra['description'] );
+					return $extra;
+				},
+				$service['extras']
+			);
+			$data[] = array(
 				'id'            => $post->ID,
-				'name'          => $post->post_title,
-				'description'   => $post->post_content,
+				'name'          => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_name', $post->post_title ),
+				'description'   => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_description', $post->post_content ),
 				'price'         => $service['price'],
 				'duration_days' => $service['duration_days'],
 				'start_time'    => $service['start_time'],
 				'min_capacity'  => $service['min_capacity'],
 				'max_capacity'  => $service['max_capacity'],
 				'allow_party'   => $service['allow_party'],
-				'extras'        => $service['extras'],
+				'extras'        => $extras,
 			);
 		}
 		return rest_ensure_response( $data );
@@ -310,11 +325,13 @@ class TC_Rest_Api {
 		}
 
 		$guide = $guides[0];
+		// WPML support - see the extras/name/description comment in
+		// get_services() above; same reasoning for Guide's name/bio.
 		return rest_ensure_response(
 			array(
 				'id'    => $guide->ID,
-				'name'  => $guide->post_title,
-				'bio'   => $guide->post_content,
+				'name'  => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_name', $guide->post_title ),
+				'bio'   => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_bio', $guide->post_content ),
 				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
 			)
 		);
@@ -351,11 +368,12 @@ class TC_Rest_Api {
 			if ( ! $guides ) {
 				continue;
 			}
-			$guide                  = $guides[0];
-			$data[ $location_id ]   = array(
+			$guide                = $guides[0];
+			// WPML support - see the comment in get_guide_for_location().
+			$data[ $location_id ] = array(
 				'id'    => $guide->ID,
-				'name'  => $guide->post_title,
-				'bio'   => $guide->post_content,
+				'name'  => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_name', $guide->post_title ),
+				'bio'   => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_bio', $guide->post_content ),
 				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
 			);
 		}

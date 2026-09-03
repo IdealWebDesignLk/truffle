@@ -367,13 +367,12 @@ class TC_Meta_Boxes {
 		// the whole problem - see PROJECT_NOTES.md.
 		//
 		// WPML support: kept as a defensive layer, though it's a no-op in
-		// practice now - Location and Service are both either
-		// non-translatable or "Display as Translated" (wpml-config.xml),
-		// neither of which duplicates posts per language, so the "Locations
-		// covered" / "Services provided" checkbox values above are already
-		// each option's single canonical ID. See PROJECT_NOTES.md's "WPML
-		// support" section for why full "Translatable" mode (the original
-		// design) was wrong for Guide specifically.
+		// practice now - Location and Service are both non-translatable
+		// (wpml-config.xml), so the "Locations covered" / "Services
+		// provided" checkbox values above are already each option's single
+		// canonical ID. See PROJECT_NOTES.md's "WPML support" section for
+		// why full "Translatable" mode (the original design) was wrong for
+		// Guide specifically.
 		delete_post_meta( $post_id, '_tc_location_ids' );
 		$location_ids = isset( $_POST['tc_location_ids'] ) ? array_map( 'absint', (array) $_POST['tc_location_ids'] ) : array();
 		foreach ( $location_ids as $location_id ) {

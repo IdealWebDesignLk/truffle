@@ -2,19 +2,29 @@
 /**
  * WPML integration helpers.
  *
- * Location and Booking are non-translatable, Service and Guide are
- * "Display as Translated" (wpml-config.xml) - none of the four duplicate
- * a post per language (an earlier design had Service/Guide fully
- * "Translatable", which does duplicate per language; that broke a Guide's
- * own-dashboard availability calendar from staying in sync across
- * languages, since the calendar is keyed by post ID and a translated post
- * gets its own ID - see PROJECT_NOTES.md's "WPML support" section for the
- * full story). to_default_language_id() below is kept as a defensive
- * no-op for that reason: nothing in this plugin's data model duplicates
- * posts per language anymore, so there's no ID drift left to normalize,
- * but the normalization is harmless if that ever changes. Every method
- * here is a guarded no-op on a site without WPML, so this class is always
- * safe to call.
+ * All four post types this plugin registers are non-translatable
+ * (wpml-config.xml) - a single canonical post per location/service/
+ * guide/booking, never duplicated per language. An earlier design had
+ * Service/Guide fully "Translatable" (WPML creates a separate post - a
+ * separate ID - per language); that broke a Guide's own-dashboard
+ * availability calendar from staying in sync across languages, since the
+ * calendar is keyed by post ID and a translated post gets its own ID. A
+ * follow-up attempt used a "Display as Translated" WPML mode that turned
+ * out not to exist as an actual selectable option in this site's WPML
+ * setup (its Post Types Translation screen only offers two flavors of
+ * full duplication, or fully non-translatable - no middle ground). See
+ * PROJECT_NOTES.md's "WPML support" section for the full history.
+ *
+ * With every post type non-translatable, per-language TEXT (a guide's
+ * name/bio, a service's name/description/extras) is instead handled via
+ * WPML's *String Translation* module - translate_string() below - which
+ * translates a specific string independently of any post, with no
+ * duplication involved. to_default_language_id() is kept as a defensive
+ * no-op given nothing here duplicates posts per language, but costs
+ * nothing to leave in place.
+ *
+ * Every method here is a guarded no-op on a site without WPML, so this
+ * class is always safe to call.
  *
  * @package TC_Booking
  */
@@ -77,5 +87,31 @@ class TC_WPML {
 			return;
 		}
 		do_action( 'wpml_switch_language', sanitize_text_field( $lang ) );
+	}
+
+	/**
+	 * Registers $value with WPML's String Translation module under
+	 * ($context, $name) - so it shows up under WPML -> String Translation
+	 * for someone to provide a per-language alternative - and returns its
+	 * value in whatever language maybe_switch_language() last set (or the
+	 * site's current language), falling back to $value itself if no
+	 * translation has been provided yet or WPML isn't active. $name should
+	 * be stable for a given piece of content (e.g. including the post ID)
+	 * so re-registering it on every request updates the same string
+	 * instead of creating a new one each time the underlying value changes.
+	 *
+	 * This is how Guide/Service text gets translated now that none of
+	 * this plugin's post types duplicate per language (see this file's
+	 * top comment) - registered fresh on every read rather than once,
+	 * since WPML needs the current default-language value to detect when
+	 * it's changed (e.g. an admin editing a guide's bio) and prompt for
+	 * re-translation.
+	 */
+	public static function translate_string( $context, $name, $value ) {
+		if ( ! self::is_active() || ! is_string( $value ) || '' === $value ) {
+			return $value;
+		}
+		do_action( 'wpml_register_string', $value, $name, $context );
+		return apply_filters( 'wpml_translate_single_string', $value, $context, $name );
 	}
 }
