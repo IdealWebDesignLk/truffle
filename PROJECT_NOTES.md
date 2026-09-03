@@ -291,7 +291,7 @@ Location, Service, Guide, and Booking are now *all* `translate="0"` in
 `wpml-config.xml` - a single, permanent, canonical post per
 location/service/guide/booking, guaranteed no duplication under any WPML
 Post Types Translation setting on this site. Per-language TEXT (a
-guide's name/bio, a service's name/description, each extra's
+guide's bio, a service's name/description, each extra's
 label/description) is instead handled through WPML's separate *String
 Translation* module, which translates an arbitrary string independently
 of any post - no post duplication is possible by construction, because
@@ -307,7 +307,9 @@ to `$value` itself if nothing's been translated yet. `TC_Rest_Api` calls
 this from `get_services()` (service name/description, plus each extra's
 label/description - contexts "TC Booking Services" / "TC Booking
 Extras"), `get_guide_for_location()`, and `get_guides_by_location()`
-(guide name/bio - context "TC Booking Guides"). A translator fills these
+(guide bio - context "TC Booking Guides"). A guide's name is a proper
+name and is left untranslated (`$guide->post_title` returned as-is). A
+translator fills these
 in under WPML -> String Translation, per string, per language - this
 replaces the old per-post Translation Editor workflow entirely for these
 two post types.

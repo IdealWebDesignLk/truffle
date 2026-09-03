@@ -16,7 +16,7 @@
  * PROJECT_NOTES.md's "WPML support" section for the full history.
  *
  * With every post type non-translatable, per-language TEXT (a guide's
- * name/bio, a service's name/description/extras) is instead handled via
+ * bio, a service's name/description/extras) is instead handled via
  * WPML's *String Translation* module - translate_string() below - which
  * translates a specific string independently of any post, with no
  * duplication involved. to_default_language_id() is kept as a defensive

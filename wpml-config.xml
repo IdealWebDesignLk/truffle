@@ -33,7 +33,7 @@
   Given "Display as Translated" isn't actually available, Service and
   Guide are now translate="0" like Location and Booking always were - a
   single, permanent, canonical post, guaranteed no duplication under any
-  WPML setting on this site. Per-language TEXT (a guide's name/bio, a
+  WPML setting on this site. Per-language TEXT (a guide's bio, a
   service's name/description, each extra's label/description) is instead
   registered with WPML's *String Translation* module at read time -
   TC_WPML::translate_string() in class-tc-wpml.php, called from

@@ -325,12 +325,14 @@ class TC_Rest_Api {
 		}
 
 		$guide = $guides[0];
-		// WPML support - see the extras/name/description comment in
-		// get_services() above; same reasoning for Guide's name/bio.
+		// WPML support - a guide's name is a proper name, not translated
+		// (see get_guides_by_location() below); only bio goes through
+		// String Translation. See the extras/name/description comment in
+		// get_services() above for the same reasoning applied to Service.
 		return rest_ensure_response(
 			array(
 				'id'    => $guide->ID,
-				'name'  => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_name', $guide->post_title ),
+				'name'  => $guide->post_title,
 				'bio'   => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_bio', $guide->post_content ),
 				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
 			)
@@ -369,10 +371,11 @@ class TC_Rest_Api {
 				continue;
 			}
 			$guide                = $guides[0];
-			// WPML support - see the comment in get_guide_for_location().
+			// WPML support - see the comment in get_guide_for_location():
+			// name is a proper name and isn't translated, only bio is.
 			$data[ $location_id ] = array(
 				'id'    => $guide->ID,
-				'name'  => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_name', $guide->post_title ),
+				'name'  => $guide->post_title,
 				'bio'   => TC_WPML::translate_string( 'TC Booking Guides', 'guide_' . $guide->ID . '_bio', $guide->post_content ),
 				'photo' => get_the_post_thumbnail_url( $guide->ID, 'medium' ) ?: null,
 			);
