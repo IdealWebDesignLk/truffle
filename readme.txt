@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.20.1
+Stable tag: 0.21.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,25 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.21.0 =
+* Fixed the actual WPML structural bug behind guide calendars not
+  syncing across languages: Services and Guides were registered fully
+  "Translatable," which makes WPML create a separate post - a separate
+  ID - per language. A Guide isn't just content though: its
+  availability calendar and WordPress login are both tied to one
+  specific post ID, so three duplicate posts per guide meant a guide's
+  own dashboard changes lived under one language's ID while customer
+  bookings in another language resolved a different ID for "the same"
+  guide. Switched Services and Guides to WPML's "Display as Translated"
+  mode instead - one canonical post, still with a per-language
+  title/content - and hardened the guide-dashboard's own lookup query,
+  which had no defined order and could resolve the wrong duplicate.
+  **If your site already has WPML-duplicated Guide/Service posts from
+  before this update, they need to be manually cleaned up** (delete the
+  extra per-language copies, keep the original) - switching this
+  setting doesn't retroactively merge them. See PROJECT_NOTES.md's
+  "WPML support" section for the full explanation.
 
 = 0.20.1 =
 * Fixed the plugin header description (shown on the Plugins screen in

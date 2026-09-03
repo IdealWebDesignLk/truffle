@@ -2,15 +2,19 @@
 /**
  * WPML integration helpers.
  *
- * Locations, Services, and Guides are registered translatable via
- * wpml-config.xml (Bookings itself stays untranslatable - it's a
- * transactional record, not content). That alone lets WPML duplicate those
- * CPTs per language, but Guide<->Location/Service assignments
- * (_tc_location_ids / _tc_service_ids on the Guide post, see
- * class-tc-meta-boxes.php) are stored by post ID, and a translated post gets
- * its own ID - so a raw ID comparison would silently fail to match once a
- * site has more than one language. Every method here is a guarded no-op on
- * a site without WPML, so this class is always safe to call.
+ * Location and Booking are non-translatable, Service and Guide are
+ * "Display as Translated" (wpml-config.xml) - none of the four duplicate
+ * a post per language (an earlier design had Service/Guide fully
+ * "Translatable", which does duplicate per language; that broke a Guide's
+ * own-dashboard availability calendar from staying in sync across
+ * languages, since the calendar is keyed by post ID and a translated post
+ * gets its own ID - see PROJECT_NOTES.md's "WPML support" section for the
+ * full story). to_default_language_id() below is kept as a defensive
+ * no-op for that reason: nothing in this plugin's data model duplicates
+ * posts per language anymore, so there's no ID drift left to normalize,
+ * but the normalization is harmless if that ever changes. Every method
+ * here is a guarded no-op on a site without WPML, so this class is always
+ * safe to call.
  *
  * @package TC_Booking
  */

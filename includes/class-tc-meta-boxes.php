@@ -366,14 +366,14 @@ class TC_Meta_Boxes {
 		// with a genuine value being searched for. One row per ID sidesteps
 		// the whole problem - see PROJECT_NOTES.md.
 		//
-		// WPML support: the "Locations covered" / "Services provided"
-		// checkboxes above list whichever language WPML's admin-side query
-		// filtering is currently showing, so the submitted IDs could be in
-		// any language. Always normalize to the default-language ID before
-		// storing (TC_WPML::to_default_language_id() is a no-op if WPML
-		// isn't active), so matching at booking time - which normalizes the
-		// same way, see TC_Availability::get_guides_for() - works
-		// regardless of which language this screen was edited in.
+		// WPML support: kept as a defensive layer, though it's a no-op in
+		// practice now - Location and Service are both either
+		// non-translatable or "Display as Translated" (wpml-config.xml),
+		// neither of which duplicates posts per language, so the "Locations
+		// covered" / "Services provided" checkbox values above are already
+		// each option's single canonical ID. See PROJECT_NOTES.md's "WPML
+		// support" section for why full "Translatable" mode (the original
+		// design) was wrong for Guide specifically.
 		delete_post_meta( $post_id, '_tc_location_ids' );
 		$location_ids = isset( $_POST['tc_location_ids'] ) ? array_map( 'absint', (array) $_POST['tc_location_ids'] ) : array();
 		foreach ( $location_ids as $location_id ) {

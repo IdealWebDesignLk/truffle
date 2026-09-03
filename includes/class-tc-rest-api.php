@@ -181,12 +181,28 @@ class TC_Rest_Api {
 		if ( ! $user_id ) {
 			return null;
 		}
+		// GitHub - WPML structure fix: Guide is now "Display as Translated"
+		// (wpml-config.xml), not fully "Translatable", so there's only ever
+		// one canonical Guide post per _tc_user_id going forward. Ordering
+		// by ID is a defensive leftover for sites upgrading from before
+		// that fix, where WPML had created a duplicate post per language
+		// (all sharing the same _tc_user_id via the old "copy" custom
+		// -field action) - with no explicit order, this query previously
+		// picked WP_Query's default (newest first), which could resolve a
+		// different post than whichever one the customer-facing booking
+		// flow was matching, and was the actual cause of a guide's own
+		// -dashboard calendar changes not appearing consistently across
+		// languages. Oldest-ID-first is the best available guess at "the
+		// original, non-duplicate post" until any leftover duplicates are
+		// manually cleaned up on affected sites.
 		$guides = get_posts(
 			array(
 				'post_type'   => TC_CPT::GUIDE,
 				'numberposts' => 1,
 				'meta_key'    => '_tc_user_id',
 				'meta_value'  => $user_id,
+				'orderby'     => 'ID',
+				'order'       => 'ASC',
 			)
 		);
 		return $guides ? $guides[0] : null;

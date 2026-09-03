@@ -1,52 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   WPML plugin configuration - read automatically by WPML when this plugin
-  is active, to pre-fill Post Types Translation / Custom Fields Translation
-  settings instead of requiring an admin to configure each one by hand.
+  is active, to pre-fill Post Types Translation settings instead of
+  requiring an admin to configure each one by hand.
 
-  Services and Guides are content the customer reads, so they're
-  translatable. Locations are addresses/coordinates, not content that reads
-  differently per language (GitHub issue #65), so - like Bookings, which are
-  transactional records, not content - they're not translatable, and not
-  offered in the translation queue at all (action="0" hides it there, vs the
-  more common "1"/"2" for optional).
+  Locations and Bookings are not translatable (translate="0"): Locations
+  are addresses/coordinates, not content that reads differently per
+  language (GitHub issue #65); Bookings are transactional records, not
+  content at all.
 
-  _tc_location_ids / _tc_service_ids (Guide <-> Location/Service
-  assignments, stored as one meta row per ID) are deliberately NOT listed
-  here - they're post-ID references, not translatable content, and
-  WPML's field actions are designed for single string/scalar values.
-  Handled in code instead - see TC_WPML::to_default_language_id() and its
-  call sites in class-tc-meta-boxes.php (save_guide()) and
-  class-tc-availability.php (get_guides_for()). Locations being
-  non-translatable means that normalization is a no-op for
-  _tc_location_ids specifically (one canonical ID regardless of
-  language), but the code doesn't need to know or care about that - it
-  stays correct either way, and _tc_service_ids still needs it since
-  Services are translatable.
+  Services and Guides are set to "Display as Translated" (translate="2"),
+  NOT "Translatable" (translate="1") - this was the actual bug behind
+  GitHub's WPML-structure report: "Translatable" makes WPML create a
+  SEPARATE post (a separate ID) per language. That's fine for ordinary
+  content, but wrong here, because:
+
+  - A Guide post isn't just content - it's tied to a stateful
+    availability calendar (wp_tc_guide_availability, keyed by that post's
+    ID - see class-tc-availability.php) and to one specific WordPress
+    login account (_tc_user_id). With three duplicate posts per guide
+    (one per language), the calendar a guide manages through their own
+    dashboard lives under ONE language's post ID, while a customer
+    booking in a different language resolves a DIFFERENT post ID for
+    "the same" guide - so blocked dates never stayed in sync between
+    languages. This is exactly what was reported.
+  - Guide<->Location/Service assignments (_tc_location_ids /
+    _tc_service_ids) are post-ID references. Under "Translatable" they'd
+    need to be re-resolved per language on every read/write (see
+    TC_WPML::to_default_language_id() below) just to work around IDs that
+    should never have differed in the first place.
+
+  "Display as Translated" keeps a SINGLE canonical post - one ID, one
+  calendar, one set of location/service assignments - while still
+  letting a translator provide a per-language title and content (WPML's
+  own Translation Editor handles this without creating a duplicate
+  wp_posts row). That single-ID guarantee is also why
+  TC_WPML::to_default_language_id() (class-tc-wpml.php, called from
+  save_guide() in class-tc-meta-boxes.php and get_guides_for() in
+  class-tc-availability.php) is now a no-op for every post type this
+  plugin registers - Location and Booking were already untranslatable,
+  and Service/Guide no longer duplicate either. Left in place as a
+  harmless defensive layer rather than ripped out, in case that
+  assumption ever needs revisiting.
+
+  Known limitation: the extras repeater (_tc_extras on Service, a
+  serialized array of label/price/max/description per row) has no
+  per-language text of its own under this setup - it shows the same
+  values in every language. WPML's field-translation tools are built for
+  plain string values, not structured array data, so there's no clean
+  way to route this through WPML as-is. If per-language extras text is
+  needed later, that's a plugin feature to build (e.g. storing each
+  extra's label/description as an array keyed by language code), not a
+  WPML configuration change.
+
+  Not yet verified against a real WPML install (this dev environment has
+  no way to run one) - PROJECT_NOTES.md's "WPML support" section has the
+  full history, including what to double-check first on a WPML-enabled
+  staging site.
 -->
 <wpml-config>
 	<custom-types>
 		<custom-type translate="0">tc_location</custom-type>
-		<custom-type translate="1">tc_service</custom-type>
-		<custom-type translate="1">tc_guide</custom-type>
+		<custom-type translate="2">tc_service</custom-type>
+		<custom-type translate="2">tc_guide</custom-type>
 		<custom-type translate="0">tc_booking</custom-type>
 	</custom-types>
-	<custom-fields>
-		<!-- Service -->
-		<custom-field action="copy">_tc_price</custom-field>
-		<custom-field action="copy">_tc_duration_days</custom-field>
-		<custom-field action="copy">_tc_start_time</custom-field>
-		<custom-field action="copy">_tc_min_capacity</custom-field>
-		<custom-field action="copy">_tc_max_capacity</custom-field>
-		<custom-field action="copy">_tc_allow_party</custom-field>
-		<custom-field action="copy">_tc_allow_shared_seats</custom-field>
-		<!-- Extras repeater: a serialized array (label/price/max/description
-		     per row), not a plain string - copied as a starting point, then
-		     edited directly on the translated Service via the same Extras
-		     meta box used for every language, rather than through WPML's
-		     string-based custom field translation editor. -->
-		<custom-field action="copy">_tc_extras</custom-field>
-		<!-- Guide -->
-		<custom-field action="copy">_tc_user_id</custom-field>
-	</custom-fields>
 </wpml-config>
