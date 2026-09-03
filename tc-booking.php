@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a fully custom stack - data model, availability engine, admin panel, front-end, and WooCommerce checkout - for locations, services, and guides.
- * Version:           0.24.0
+ * Version:           0.24.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.24.0' );
+define( 'TC_BOOKING_VERSION', '0.24.1' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );
@@ -56,6 +56,24 @@ PucFactory::buildUpdateChecker(
 	TC_BOOKING_FILE,
 	'tc-booking'
 )->setBranch( 'main' );
+
+/**
+ * The plugin header declares Text Domain: tc-booking, but that alone never
+ * registers the domain with WordPress core - every __()/_e() call using it
+ * was working (no fatal, no notice) purely because WPML overrides gettext
+ * output directly rather than needing an actual loaded domain, but that
+ * also meant WordPress/WPML had no formal record tying the "tc-booking"
+ * domain to this plugin, which is very likely why WPML's String
+ * Translation listed it as an "Unknown" domain instead of recognizing it.
+ * Hooked on init (not plugins_loaded, where the rest of this file's
+ * bootstrap runs) per current WordPress guidance - loading a text domain
+ * any earlier triggers a _load_textdomain_just_in_time doing-it-wrong
+ * notice on WP 6.7+.
+ */
+function tc_booking_load_textdomain() {
+	load_plugin_textdomain( 'tc-booking', false, dirname( plugin_basename( TC_BOOKING_FILE ) ) . '/languages' );
+}
+add_action( 'init', 'tc_booking_load_textdomain' );
 
 /**
  * Core bootstrap. Hooked on plugins_loaded so WooCommerce (if active) is available.

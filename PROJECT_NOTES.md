@@ -543,6 +543,24 @@ worth confirming on staging that a booking's confirmation email actually
 arrives in the language it was booked in, especially for the async
 payment-webhook path where the language-persistence fix matters most.
 
+**Live-site follow-up to 0.24.0 - WPML's Default Language was still
+English**: after 0.24.0 shipped, WPML's String Translation screen kept
+showing the (now-Dutch) strings under an English flag. Turned out the
+site's actual WPML -> Languages -> Default language setting had never
+been changed to Dutch - it was still English, so WPML was (correctly,
+given its own setting) treating the Dutch source text as "the English
+original." 0.24.0's code change was the right complementary half of the
+fix; the other half - actually changing that WPML setting to Dutch - is
+a site-configuration change on the live install, not something in this
+repo. Also noticed (same live-site session): the `tc-booking` domain
+showed as "Unknown" in WPML's domain filter, because the plugin declared
+`Text Domain: tc-booking` in its header but never actually called
+`load_plugin_textdomain()` to register it with WordPress core - fixed in
+0.24.1 (`tc_booking_load_textdomain()` in `tc-booking.php`, hooked to
+`init` rather than `plugins_loaded` to avoid WP 6.7+'s
+`_load_textdomain_just_in_time` doing-it-wrong notice for loading a
+domain too early).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
