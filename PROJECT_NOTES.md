@@ -299,7 +299,7 @@ no post is ever involved.
 
 `TC_WPML::translate_string( $context, $name, $value )` in
 `class-tc-wpml.php` is the mechanism: it registers `$value` with WPML
-(`wpml_register_string`) under a stable `$name` (includes the post ID,
+(`wpml_register_single_string`) under a stable `$name` (includes the post ID,
 so re-registering on every request updates the same string rather than
 creating a new one) and a `$context`, then returns whatever translation
 WPML currently has for it (`wpml_translate_single_string`), falling back
@@ -369,7 +369,7 @@ active (the overwhelming majority of installs, must never be at risk),
 another simulating an active WPML install's `do_action`/`apply_filters`
 to confirm `translate_string()` both registers a string and returns the
 correct translated-or-fallback value. **Still not verified against a
-real WPML install** that the `wpml_register_string` /
+real WPML install** that the `wpml_register_single_string` /
 `wpml_translate_single_string` calls actually surface entries under
 WPML -> String Translation and serve translated values through the REST
 API end-to-end - that's the next thing to confirm on a WPML-enabled

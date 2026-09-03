@@ -53,7 +53,7 @@
   Verified end-to-end on the live/staging site for the "translation still
   creates a duplicate post" failure mode (that's what caught mistake #2
   above). NOT yet verified that WPML's String Translation module
-  correctly picks up and serves the wpml_register_string /
+  correctly picks up and serves the wpml_register_single_string /
   wpml_translate_single_string calls this plugin now makes - that's the
   next thing to confirm on a WPML-enabled staging site. See
   PROJECT_NOTES.md's "WPML support" section for the full history.

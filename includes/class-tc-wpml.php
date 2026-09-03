@@ -111,7 +111,13 @@ class TC_WPML {
 		if ( ! self::is_active() || ! is_string( $value ) || '' === $value ) {
 			return $value;
 		}
-		do_action( 'wpml_register_string', $value, $name, $context );
+		// The registration hook is wpml_register_single_string, taking
+		// (context, name, value) in that order - NOT wpml_register_string.
+		// Getting this wrong (wrong hook name/argument order) previously
+		// caused WPML to receive a guide's full bio text where it expected
+		// a short context slug, and reject it with a REST 500 "The string
+		// did not match the expected pattern." - caught on the live site.
+		do_action( 'wpml_register_single_string', $context, $name, $value );
 		return apply_filters( 'wpml_translate_single_string', $value, $context, $name );
 	}
 }
