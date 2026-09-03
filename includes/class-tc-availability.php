@@ -328,6 +328,21 @@ class TC_Availability {
 	}
 
 	/**
+	 * GitHub issue #66 - the Location step's service picker was showing
+	 * every service regardless of whether any guide actually covers it at
+	 * the chosen location; used by TC_Rest_Api::get_services() to filter
+	 * the catalog down to what's actually offered there. Thin public
+	 * wrapper so get_guides_for() (the guide-matching logic every
+	 * availability/booking check already shares) stays the single source
+	 * of truth rather than being duplicated.
+	 *
+	 * @return bool
+	 */
+	public static function service_available_at_location( $location_id, $service_id ) {
+		return (bool) self::get_guides_for( $location_id, $service_id );
+	}
+
+	/**
 	 * @return array{id:int,price:float,duration_days:int,min_capacity:int,max_capacity:int,extras:array}|null
 	 */
 	public static function get_service_data( $service_id ) {

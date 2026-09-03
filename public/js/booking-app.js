@@ -49,6 +49,7 @@
 		monthOffset: 0,
 		grid: [],
 		gridLoading: false,
+		servicesLoading: false,
 		extraQty: {},
 		partySize: 1,
 		guests: [],
@@ -308,16 +309,17 @@
 
 	function setStep( key ) {
 		state.step = key;
-		// GitHub issue #21 - the service step defaults to the first ceremony
-		// instead of requiring a click to imply the service; GitHub issue
-		// #42 - since the calendar is back on this same step, load its
-		// grid right away too instead of waiting for a separate step.
-		if ( 'service' === key && ! state.serviceId && state.services.length ) {
-			state.serviceId = state.services[ 0 ].id;
-		}
 		render();
+		// GitHub issue #66 - the catalog fetched at init has every service,
+		// unfiltered (no location is known yet at that point); re-fetch
+		// scoped to the chosen location whenever this step is (re-)entered
+		// (including via Back from a later step, in case the customer went
+		// back further and picked a different location) so only services
+		// actually offered there are shown. Picking the default service and
+		// loading its calendar both now happen once that resolves - see
+		// loadServicesForLocation().
 		if ( 'service' === key ) {
-			loadGrid();
+			loadServicesForLocation();
 		}
 		window.scrollTo( { top: root.offsetTop - 20, behavior: 'smooth' } );
 	}
@@ -526,18 +528,26 @@
 		var loc     = getLocation( state.locationId );
 		var service = getService( state.serviceId );
 
-		var cards = state.services.map( function ( svc ) {
-			var selected = svc.id === state.serviceId;
-			return '<div class="tc-svc-card' + ( selected ? ' selected' : '' ) + '" data-svc-select="' + svc.id + '">' +
-				'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
-				'<div class="svc-meta"><span class="svc-duration">' + serviceDurationLabel( svc ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
-				'</div>';
-		} ).join( '' );
+		// GitHub issue #66 - the catalog is now scoped to this location
+		// (see loadServicesForLocation()), so state.services here is
+		// already just what's actually offered - no client-side filtering
+		// needed, just a loading state while that fetch is in flight.
+		var cardsArea = state.servicesLoading
+			? '<p>Loading services…</p>'
+			: ( state.services.length
+				? '<div class="tc-svc-cards">' + state.services.map( function ( svc ) {
+					var selected = svc.id === state.serviceId;
+					return '<div class="tc-svc-card' + ( selected ? ' selected' : '' ) + '" data-svc-select="' + svc.id + '">' +
+						'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
+						'<div class="svc-meta"><span class="svc-duration">' + serviceDurationLabel( svc ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
+						'</div>';
+				} ).join( '' ) + '</div>'
+				: '<p style="color:var(--ink-soft);font-size:14px">No ceremonies are available at this location right now.</p>' );
 
 		return '<h2 class="tc-title">Location: ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
 			'<p class="tc-sub">Choose a service. Dates will appear below.</p>' +
 			'<p class="tc-section-label">Choose a ceremony</p>' +
-			'<div class="tc-svc-cards">' + cards + '</div>' +
+			cardsArea +
 			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
 				'<p class="tc-sub">Select an open day to continue.</p>' +
 				renderAvailabilityCalendar( service ) : '' ) +
@@ -899,6 +909,44 @@
 		render();
 	}
 
+	// GitHub issue #66 - re-fetches the service catalog scoped to
+	// state.locationId (server-side filtered to services at least one
+	// guide actually covers there, see TC_Rest_Api::get_services()),
+	// replacing the unfiltered init list. Picks a default service from the
+	// fresh (filtered) list and kicks off its calendar load once resolved,
+	// rather than doing that synchronously against the stale list like
+	// setStep() used to.
+	function loadServicesForLocation() {
+		if ( ! state.locationId ) return;
+		var requestedLocation = state.locationId; // guard against a stale response landing after the customer picked a different location
+		state.servicesLoading = true;
+		render();
+		apiGet( withLang( '/services?location_id=' + state.locationId ) )
+			.then( function ( services ) {
+				if ( requestedLocation !== state.locationId ) return;
+				state.services       = services;
+				state.servicesLoading = false;
+				// The previously selected/defaulted service might not be
+				// offered at this location (e.g. customer went Back and
+				// picked a different one) - drop it so a fresh valid
+				// default gets picked below.
+				if ( state.serviceId && ! getService( state.serviceId ) ) {
+					state.serviceId = null;
+				}
+				if ( ! state.serviceId && state.services.length ) {
+					state.serviceId = state.services[ 0 ].id;
+				}
+				render();
+				loadGrid();
+			} )
+			.catch( function ( err ) {
+				if ( requestedLocation !== state.locationId ) return;
+				state.error           = err.message;
+				state.servicesLoading = false;
+				render();
+			} );
+	}
+
 	function loadGrid() {
 		if ( ! state.serviceId ) return;
 		var requestedService = state.serviceId; // guard against a stale response landing after the customer picked a different card
@@ -994,10 +1042,14 @@
 	/* Init                                                                 */
 	/* ------------------------------------------------------------------ */
 
-	Promise.all( [ apiGet( withLang( '/locations' ) ), apiGet( withLang( '/services' ) ), apiGet( withLang( '/guides' ) ) ] ).then( function ( results ) {
+	// GitHub issue #66 - services are now always fetched scoped to a
+	// location (loadServicesForLocation(), once one is picked) rather than
+	// unfiltered, so there's no need to also fetch the full catalog here -
+	// it would just get replaced the moment the customer reaches the
+	// service step.
+	Promise.all( [ apiGet( withLang( '/locations' ) ), apiGet( withLang( '/guides' ) ) ] ).then( function ( results ) {
 		state.locations        = results[ 0 ];
-		state.services         = results[ 1 ];
-		state.guidesByLocation = results[ 2 ];
+		state.guidesByLocation = results[ 1 ];
 		render();
 	} ).catch( function ( err ) {
 		root.innerHTML = '<div class="tc-card"><p class="tc-error">Could not load the booking form: ' + escapeHtml( err.message ) + '</p></div>';

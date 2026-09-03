@@ -221,6 +221,13 @@ class TC_Rest_Api {
 
 	public static function get_services( WP_REST_Request $request ) {
 		TC_WPML::maybe_switch_language( $request->get_param( 'lang' ) );
+		// GitHub issue #66 - an optional location_id filters the catalog
+		// down to services actually offered there (i.e. at least one guide
+		// covers that location+service pair) - see
+		// TC_Availability::service_available_at_location(). Without it,
+		// every service is returned, same as before (used e.g. by the
+		// init fetch before a location has been picked).
+		$location_id = absint( $request->get_param( 'location_id' ) );
 		// GitHub issue #64 - services now sort by the "Order" field (see
 		// TC_CPT::register_service()'s 'page-attributes' support) first,
 		// falling back to title for any tied/unset (default 0) order
@@ -229,6 +236,9 @@ class TC_Rest_Api {
 		$posts = get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => array( 'menu_order' => 'ASC', 'title' => 'ASC' ) ) );
 		$data  = array();
 		foreach ( $posts as $post ) {
+			if ( $location_id && ! TC_Availability::service_available_at_location( $location_id, $post->ID ) ) {
+				continue;
+			}
 			$service  = TC_Availability::get_service_data( $post->ID );
 			$data[]   = array(
 				'id'            => $post->ID,
