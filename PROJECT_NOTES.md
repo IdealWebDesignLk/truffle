@@ -393,6 +393,68 @@ type is ever made "Translatable" again in the future - non-translatable
 types (all four, now) don't have this issue, since none of them require
 a language assignment per post.
 
+**0.22.1 - wrong WPML hook name broke the whole widget**: the first cut
+of `translate_string()` called `do_action( 'wpml_register_string', $value,
+$name, $context )` - not a real WPML hook, and the wrong argument order
+for the real one (`wpml_register_single_string`, which takes `$context,
+$name, $value` in that order). WPML ended up receiving a guide's full
+bio text where it expected a short context slug, and rejected it - every
+call to `/guides`, `/services`, and `/guide` returned an HTTP 500 with
+"The string did not match the expected pattern.", breaking the booking
+widget outright on the live site. Fixed by correcting the hook name and
+argument order; verified with a standalone test simulating a WPML-style
+handler that rejects an oversized "context" value.
+
+**0.22.2 - a guide's name isn't translated**: only bio goes through
+`translate_string()` now - a guide's name is a proper name, not content
+that should read differently per language, so `get_guide_for_location()`
+and `get_guides_by_location()` return `$guide->post_title` as-is.
+
+**0.23.0 - the customer-facing widget's static UI text is now
+translatable too**: everything above only ever covered *dynamic* content
+pulled from the database (guide bio, service name/description/extras).
+Every other piece of text the widget shows - "Pick a location", "Enter
+a valid email address.", button labels, step headings, roughly 70
+strings in total - was hardcoded directly in `public/js/booking-app.js`,
+invisible to WPML entirely (WPML's automatic string scanner only reads
+PHP source, never JS), so the widget rendered in English no matter what
+language the customer had selected. Fixed the same way any other
+plugin's admin-facing text is made translatable: every string moved into
+a big `i18n` array in `class-tc-booking-shortcode.php`, each one wrapped
+in `__( '...', 'tc-booking' )` and passed to the front-end via
+`wp_localize_script( 'tc-booking-app', 'tcBooking', array( ..., 'i18n'
+=> array( ... ) ) )`. `booking-app.js` reads everything from
+`window.tcBooking.i18n` (aliased `I18N`) instead of hardcoding text, and
+a small `i18nFmt()` helper fills `%s`/`%d` placeholders in templates like
+`"Available dates for %s"` in the order they appear (not full `sprintf`
+- no `%1$s` positional/reordering support, deliberately, since nothing
+here needs it - watch for this if a translator's string ever needs
+reordered placeholders, it can't be done with this helper as written).
+Translators fill these in the same place as guide/service text: WPML ->
+String Translation, "Strings in theme and plugins".
+
+Month names and weekday abbreviations (the calendar heading, the "Mon
+Tue Wed..." header row, full date strings on the review step) and price
+number formatting (decimal/thousands separators) are handled separately
+from that `i18n` list - via `jsLocale()` in `booking-app.js`, which maps
+the WPML language code to a real locale tag (`nl` -> `nl-NL`, `de` ->
+`de-DE`) and passes it to the browser's own `Intl`/`toLocaleString` APIs
+instead of the previously hardcoded `'en-US'`. This is deliberately
+*not* routed through WPML String Translation - `Intl` already knows how
+to localize month/weekday names and number formatting correctly for
+any locale, so there's no translation work needed for that piece and no
+risk of an incomplete/inconsistent manual translation.
+
+Verified end-to-end in a browser (no live WordPress available in this
+dev environment, so a static HTML harness with `window.tcBooking`
+mocked and `fetch` stubbed to return sample data stood in for it):
+walked the full flow - location -> service/calendar -> party -> extras
+-> details (including triggering every validation message) -> review -
+confirmed every string renders from `I18N` rather than a hardcoded
+literal, every template's placeholders substitute correctly, and dates/
+prices render in Dutch locale format (`jsLocale()` returning `'nl-NL'`)
+with no console errors at any step.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

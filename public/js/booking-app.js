@@ -19,6 +19,14 @@
 
 	var API_ROOT = window.tcBooking.restRoot;
 	var NONCE    = window.tcBooking.nonce;
+	// WPML support - every static UI string (headings, buttons, labels,
+	// validation messages) is localized from PHP instead of hardcoded here,
+	// so WPML's automatic string scanner can find and translate each one
+	// (see the big i18n array in class-tc-booking-shortcode.php - that's
+	// also where the "why" for this whole approach is explained). Falls
+	// back to {} so a stale cached copy of this file against a newer
+	// tcBooking payload doesn't throw on a missing key, just renders blank.
+	var I18N     = window.tcBooking.i18n || {};
 	// WPML support - empty string (falsy) when WPML isn't active, or on a
 	// site that is but hasn't set a language yet; withLang() below is a
 	// no-op in that case.
@@ -27,6 +35,37 @@
 	function withLang( path ) {
 		if ( ! LANG ) return path;
 		return path + ( path.indexOf( '?' ) === -1 ? '?' : '&' ) + 'lang=' + encodeURIComponent( LANG );
+	}
+
+	// Substitutes %s/%d placeholders in an I18N template, in order - e.g.
+	// i18nFmt( I18N.availableDatesFor, service.name ). Not full sprintf()
+	// (no %1$s positional/reordering support), but every template here only
+	// ever needs its placeholders filled in the order they appear.
+	function i18nFmt( template ) {
+		var args = Array.prototype.slice.call( arguments, 1 );
+		var i    = 0;
+		return ( template || '' ).replace( /%[sd]/g, function () { return args[ i++ ]; } );
+	}
+
+	// WPML support - maps the WPML language code to a real locale tag so
+	// Intl-based date/number formatting (month names, weekday names, price
+	// thousands/decimal separators) matches the customer's language too,
+	// without needing to hand-translate any of that through WPML - Intl
+	// already knows how to localize it correctly.
+	var LOCALE_MAP = { en: 'en-US', nl: 'nl-NL', de: 'de-DE' };
+	function jsLocale() {
+		return LOCALE_MAP[ LANG ] || 'en-US';
+	}
+
+	// Real localized weekday abbreviations for the calendar header, via
+	// Intl rather than a hardcoded English list - Jan 4 2021 was a Monday,
+	// used purely as a known Monday to walk forward from.
+	function dowLabels() {
+		var labels = [];
+		for ( var i = 0; i < 7; i++ ) {
+			labels.push( new Date( 2021, 0, 4 + i ).toLocaleDateString( jsLocale(), { weekday: 'short' } ) );
+		}
+		return labels;
 	}
 
 	var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,10 +122,10 @@
 
 	function validateDetails() {
 		var errors = {};
-		if ( ! state.info.firstName.trim() ) errors.firstName = 'First name is required.';
-		if ( ! state.info.lastName.trim() ) errors.lastName = 'Last name is required.';
-		if ( ! EMAIL_RE.test( state.info.email.trim() ) ) errors.email = 'Enter a valid email address.';
-		if ( ! PHONE_RE.test( state.info.phone.trim() ) ) errors.phone = 'Enter a valid phone number.';
+		if ( ! state.info.firstName.trim() ) errors.firstName = I18N.firstNameRequired;
+		if ( ! state.info.lastName.trim() ) errors.lastName = I18N.lastNameRequired;
+		if ( ! EMAIL_RE.test( state.info.email.trim() ) ) errors.email = I18N.emailInvalid;
+		if ( ! PHONE_RE.test( state.info.phone.trim() ) ) errors.phone = I18N.phoneInvalid;
 		return errors;
 	}
 
@@ -95,9 +134,9 @@
 		var count  = Math.max( 0, state.partySize - 1 );
 		for ( var i = 0; i < count; i++ ) {
 			var g = state.guests[ i ] || {};
-			if ( ! ( g.name || '' ).trim() ) errors[ 'guest-' + i + '-name' ] = 'Name is required.';
-			if ( ! EMAIL_RE.test( ( g.email || '' ).trim() ) ) errors[ 'guest-' + i + '-email' ] = 'Enter a valid email address.';
-			if ( ( g.phone || '' ).trim() && ! PHONE_RE.test( g.phone.trim() ) ) errors[ 'guest-' + i + '-phone' ] = 'Enter a valid phone number.';
+			if ( ! ( g.name || '' ).trim() ) errors[ 'guest-' + i + '-name' ] = I18N.nameRequired;
+			if ( ! EMAIL_RE.test( ( g.email || '' ).trim() ) ) errors[ 'guest-' + i + '-email' ] = I18N.emailInvalid;
+			if ( ( g.phone || '' ).trim() && ! PHONE_RE.test( g.phone.trim() ) ) errors[ 'guest-' + i + '-phone' ] = I18N.phoneInvalid;
 		}
 		return errors;
 	}
@@ -115,7 +154,7 @@
 		var errorCount = Object.keys( errors ).length;
 		if ( errorCount ) {
 			state.fieldErrors = errors;
-			state.error = errorCount > 1 ? 'Please fix the highlighted fields before continuing.' : 'Please fix the highlighted field before continuing.';
+			state.error = errorCount > 1 ? I18N.fixFieldsPlural : I18N.fixFieldSingular;
 			render();
 			return;
 		}
@@ -157,7 +196,7 @@
 	function handleResponse( res ) {
 		return res.json().then( function ( data ) {
 			if ( ! res.ok ) {
-				var message = ( data && data.message ) ? data.message : 'Something went wrong. Please try again.';
+				var message = ( data && data.message ) ? data.message : I18N.somethingWrong;
 				throw new Error( message );
 			}
 			return data;
@@ -235,7 +274,7 @@
 		return cap;
 	}
 	function fmt( n ) {
-		return '\u20ac' + Number( n ).toLocaleString( 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 } );
+		return '\u20ac' + Number( n ).toLocaleString( jsLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 } );
 	}
 	// Not new Date(dateStr) directly - a bare "YYYY-MM-DD" string is parsed
 	// as UTC midnight per spec, which can display the wrong calendar day
@@ -250,7 +289,7 @@
 	function selectionSummary() {
 		var service = getService( state.serviceId );
 		if ( ! service || ! state.date ) return '';
-		var dateStr = parseDateStr( state.date ).toLocaleDateString( 'en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' } );
+		var dateStr = parseDateStr( state.date ).toLocaleDateString( jsLocale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' } );
 		return '<div class="tc-selection-summary">' + escapeHtml( service.name ) + ' \u00b7 ' + dateStr + '</div>';
 	}
 	function extrasTotal() {
@@ -356,7 +395,7 @@
 		if ( ! state.lightboxUrl ) return '';
 		return '<div class="tc-lightbox-overlay" id="tc-lightbox-overlay">' +
 			'<img src="' + escapeAttr( state.lightboxUrl ) + '" alt="">' +
-			'<button type="button" class="tc-lightbox-close" aria-label="Close">&times;</button>' +
+			'<button type="button" class="tc-lightbox-close" aria-label="' + escapeAttr( I18N.close ) + '">&times;</button>' +
 			'</div>';
 	}
 
@@ -372,9 +411,9 @@
 			: escapeHtml( initials( g.name ) );
 		return '<div class="tc-modal-overlay" id="tc-guide-modal">' +
 			'<div class="tc-modal-card">' +
-			'<button type="button" class="tc-modal-close" id="tc-guide-modal-close" aria-label="Close">&times;</button>' +
+			'<button type="button" class="tc-modal-close" id="tc-guide-modal-close" aria-label="' + escapeAttr( I18N.close ) + '">&times;</button>' +
 			'<div class="tc-modal-photo' + ( g.photo ? ' zoomable' : '' ) + '">' + photoInner + '</div>' +
-			'<div class="tc-modal-label">Your guide at this location</div>' +
+			'<div class="tc-modal-label">' + escapeHtml( I18N.yourGuideAtLocation ) + '</div>' +
 			'<div class="tc-modal-name">' + escapeHtml( g.name ) + '</div>' +
 			'<div class="tc-modal-bio">' + escapeHtml( g.bio || '' ) + '</div>' +
 			'</div></div>';
@@ -396,9 +435,9 @@
 		return '<div class="tc-modal-overlay" id="tc-extra-info-modal">' +
 			'<div class="tc-modal-card tc-extra-info-card">' +
 			'<div class="tc-extra-info-head"><div class="tc-modal-name">' + escapeHtml( extra.label ) + '</div>' +
-			'<button type="button" class="tc-modal-close" id="tc-extra-info-modal-close" aria-label="Close">&times;</button></div>' +
+			'<button type="button" class="tc-modal-close" id="tc-extra-info-modal-close" aria-label="' + escapeAttr( I18N.close ) + '">&times;</button></div>' +
 			'<div class="tc-modal-bio">' + escapeHtml( extra.description || '' ) + '</div>' +
-			'<button type="button" class="tc-btn primary tc-extra-info-close-btn" id="tc-extra-info-modal-close-btn">Close</button>' +
+			'<button type="button" class="tc-btn primary tc-extra-info-close-btn" id="tc-extra-info-modal-close-btn">' + escapeHtml( I18N.close ) + '</button>' +
 			'</div></div>';
 	}
 
@@ -482,28 +521,28 @@
 				: escapeHtml( initials( state.guide.name ) );
 			guideMini = '<div class="tc-guide-mini">' +
 				'<div class="photo">' + photoInner + '</div>' +
-				'<div class="gm-text"><div class="gm-label">Your guide</div><div class="gm-name">' + escapeHtml( state.guide.name ) + '</div>' +
+				'<div class="gm-text"><div class="gm-label">' + escapeHtml( I18N.yourGuide ) + '</div><div class="gm-name">' + escapeHtml( state.guide.name ) + '</div>' +
 				( state.guide.bio ? '<div class="gm-bio">' + escapeHtml( state.guide.bio ) + '</div>' : '' ) +
-				'<button type="button" class="tc-link-btn" id="tc-guide-readmore">Read more</button></div>' +
+				'<button type="button" class="tc-link-btn" id="tc-guide-readmore">' + escapeHtml( I18N.readMore ) + '</button></div>' +
 				'</div>';
 		}
 
-		return '<h2 class="tc-title">Pick a location</h2>' +
-			'<p class="tc-sub">This determines which guide and calendar you\u2019ll see next.</p>' +
+		return '<h2 class="tc-title">' + escapeHtml( I18N.pickLocation ) + '</h2>' +
+			'<p class="tc-sub">' + escapeHtml( I18N.pickLocationSub ) + '</p>' +
 			// GitHub issue #24 - map/list wrapped as a grid so CSS can put
 			// the map on the right and the list on the left on desktop;
 			// issue #25 - larger .tc-map-svg cap lets the map grow bigger in
 			// that wider column.
 			'<div class="tc-loc-layout">' +
 			'<div class="tc-loc-map-col">' +
-			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="' + viewBox + '" role="img" aria-label="Map of the Netherlands with ceremony locations">' +
+			'<div class="tc-map-wrap"><svg class="tc-map-svg" viewBox="' + viewBox + '" role="img" aria-label="' + escapeAttr( I18N.mapAriaLabel ) + '">' +
 			'<path class="tc-map-outline" d="' + NL_OUTLINE + '"></path>' + pins + '</svg>' +
-			'<p class="tc-map-caption">Tap a pin, or pick from the list</p></div>' +
+			'<p class="tc-map-caption">' + escapeHtml( I18N.mapCaption ) + '</p></div>' +
 			'</div>' +
 			guideMini +
 			'<div class="tc-loc-list-col"><div class="tc-loc-list">' + list + '</div></div>' +
 			'</div>' +
-			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>Continue</button></div>';
+			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	// GitHub issue #21 - "pick a ceremony and date in one click on a 7-day
@@ -514,7 +553,7 @@
 	// GitHub issue #42 merged them back into one view.)
 	function serviceDurationLabel( svc ) {
 		var d = Math.max( 1, svc.duration_days );
-		return d + ( d > 1 ? ' days' : ' day' );
+		return d + ' ' + ( d > 1 ? I18N.daysUnit : I18N.dayUnit );
 	}
 
 	function monthBoundsFromOffset( offset ) {
@@ -533,7 +572,7 @@
 		// already just what's actually offered - no client-side filtering
 		// needed, just a loading state while that fetch is in flight.
 		var cardsArea = state.servicesLoading
-			? '<p>Loading services…</p>'
+			? '<p>' + escapeHtml( I18N.loadingServices ) + '</p>'
 			: ( state.services.length
 				? '<div class="tc-svc-cards">' + state.services.map( function ( svc ) {
 					var selected = svc.id === state.serviceId;
@@ -542,21 +581,21 @@
 						'<div class="svc-meta"><span class="svc-duration">' + serviceDurationLabel( svc ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
 						'</div>';
 				} ).join( '' ) + '</div>'
-				: '<p style="color:var(--ink-soft);font-size:14px">No ceremonies are available at this location right now.</p>' );
+				: '<p style="color:var(--ink-soft);font-size:14px">' + escapeHtml( I18N.noServicesAvailable ) + '</p>' );
 
-		return '<h2 class="tc-title">Location: ' + escapeHtml( loc ? loc.name.split( ' (' )[ 0 ] : '' ) + '</h2>' +
-			'<p class="tc-sub">Choose a service. Dates will appear below.</p>' +
-			'<p class="tc-section-label">Choose a ceremony</p>' +
+		return '<h2 class="tc-title">' + escapeHtml( i18nFmt( I18N.locationLabel, loc ? loc.name.split( ' (' )[ 0 ] : '' ) ) + '</h2>' +
+			'<p class="tc-sub">' + escapeHtml( I18N.chooseServiceSub ) + '</p>' +
+			'<p class="tc-section-label">' + escapeHtml( I18N.chooseServiceLabel ) + '</p>' +
 			cardsArea +
-			( service ? '<p class="tc-cal-heading">Available dates for ' + escapeHtml( service.name ) + '</p>' +
-				'<p class="tc-sub">Select an open day to continue.</p>' +
+			( service ? '<p class="tc-cal-heading">' + escapeHtml( i18nFmt( I18N.availableDatesFor, service.name ) ) + '</p>' +
+				'<p class="tc-sub">' + escapeHtml( I18N.selectOpenDay ) + '</p>' +
 				renderAvailabilityCalendar( service ) : '' ) +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><span></span></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><span></span></div>';
 	}
 
 	function renderAvailabilityCalendar( service ) {
 		var bounds    = monthBoundsFromOffset( state.monthOffset );
-		var monthName = bounds.first.toLocaleDateString( 'en-US', { month: 'long', year: 'numeric' } );
+		var monthName = bounds.first.toLocaleDateString( jsLocale(), { month: 'long', year: 'numeric' } );
 		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
 		var daysInMo  = bounds.last.getDate();
 		var today     = nlToday();
@@ -575,11 +614,11 @@
 			var clickable = ! isPast && 'off' !== status;
 			var cls       = isPast ? 'past' : status;
 			if ( iso === state.date ) cls += ' selected';
-			var label = 'available' === status ? 'Open' : ( 'limited' === status ? 'Almost full' : 'Closed' );
+			var label = 'available' === status ? I18N.statusOpen : ( 'limited' === status ? I18N.statusAlmostFull : I18N.statusClosed );
 			var remainingSub = ( cell && null !== cell.remaining && undefined !== cell.remaining && 'limited' === status )
-				? '<span class="rem">' + cell.remaining + ' left</span>' : '';
+				? '<span class="rem">' + escapeHtml( i18nFmt( I18N.leftSuffix, cell.remaining ) ) + '</span>' : '';
 			cells += '<div class="tc-avail-day ' + cls + '"' + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
-				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + label + '</span>' + remainingSub ) + '</div>';
+				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' + remainingSub ) + '</div>';
 		}
 
 		var minMonth = 0;
@@ -587,18 +626,18 @@
 
 		return '<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190</button>' +
 			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>\u2192</button></div>' +
-			( state.gridLoading ? '<p>Loading availability\u2026</p>' :
+			( state.gridLoading ? '<p>' + escapeHtml( I18N.loadingAvailability ) + '</p>' :
 				'<div class="tc-avail-cal">' +
-				[ 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' ].map( function ( l ) { return '<div class="tc-avail-dow">' + l + '</div>'; } ).join( '' ) +
+				dowLabels().map( function ( l ) { return '<div class="tc-avail-dow">' + escapeHtml( l ) + '</div>'; } ).join( '' ) +
 				cells + '</div>' ) +
-			'<div class="tc-legend"><span><span class="tc-swatch" style="background:var(--available)"></span>Available</span>' +
-			'<span><span class="tc-swatch" style="background:var(--limited)"></span>Almost full</span>' +
-			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Not available</span></div>';
+			'<div class="tc-legend"><span><span class="tc-swatch" style="background:var(--available)"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
+			'<span><span class="tc-swatch" style="background:var(--limited)"></span>' + escapeHtml( I18N.statusAlmostFull ) + '</span>' +
+			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>' + escapeHtml( I18N.legendNotAvailable ) + '</span></div>';
 	}
 
 	function renderParty() {
 		var service = getService( state.serviceId );
-		if ( ! service ) return '<p>Please go back and pick a date.</p>';
+		if ( ! service ) return '<p>' + escapeHtml( I18N.goBackPickDate ) + '</p>';
 		var max = partySizeMax();
 		if ( state.partySize > max ) {
 			state.partySize = max;
@@ -606,22 +645,22 @@
 		}
 
 		var limited = max < Math.max( 1, service.max_capacity );
-		return '<h2 class="tc-title">How many people are you bringing?</h2>' +
-			'<p class="tc-sub">Includes you — up to ' + max + ' ' + ( 1 === max ? 'person' : 'people' ) + ' total for this ceremony' +
-			( limited ? ' (limited availability on this date)' : '' ) + '. The base price is charged per person.</p>' +
-			'<div class="tc-party-row"><div><div class="en">Total in your group</div>' +
-			'<div class="ep">' + fmt( service.price ) + ' per person</div></div>' +
+		return '<h2 class="tc-title">' + escapeHtml( I18N.howManyPeople ) + '</h2>' +
+			'<p class="tc-sub">' + escapeHtml( i18nFmt( I18N.includesYouUpTo, max, 1 === max ? I18N.personUnit : I18N.peopleUnit ) ) +
+			( limited ? ' ' + escapeHtml( I18N.limitedAvailabilityNote ) : '' ) + ' ' + escapeHtml( I18N.basePriceChargedPerPerson ) + '</p>' +
+			'<div class="tc-party-row"><div><div class="en">' + escapeHtml( I18N.totalInGroup ) + '</div>' +
+			'<div class="ep">' + escapeHtml( i18nFmt( I18N.perPersonSuffix, fmt( service.price ) ) ) + '</div></div>' +
 			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
 			'<span class="val">' + state.partySize + '</span>' +
 			'<button type="button" id="tc-party-plus"' + ( state.partySize >= max ? ' disabled' : '' ) + '>+</button></div></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	function guestField( idx, key, label, value, placeholder, type ) {
 		var errKey = 'guest-' + idx + '-' + key;
 		var err    = state.fieldErrors[ errKey ];
-		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + label + '</label>' +
-			'<input type="' + ( type || 'text' ) + '" data-guest-index="' + idx + '" data-guest-field="' + key + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '">' +
+		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + escapeHtml( label ) + '</label>' +
+			'<input type="' + ( type || 'text' ) + '" data-guest-index="' + idx + '" data-guest-field="' + key + '" value="' + escapeAttr( value ) + '" placeholder="' + escapeAttr( placeholder ) + '">' +
 			( err ? '<div class="tc-field-error">' + escapeHtml( err ) + '</div>' : '' ) + '</div>';
 	}
 
@@ -631,17 +670,17 @@
 		for ( var i = 0; i < count; i++ ) {
 			var g = state.guests[ i ] || { name: '', email: '', phone: '' };
 			blocks += '<div class="tc-guest-block">' +
-				'<p class="tc-guest-heading">Guest ' + ( i + 1 ) + '</p>' +
-				guestField( i, 'name', 'Full name', g.name, 'Guest name' ) +
-				guestField( i, 'email', 'Email', g.email, 'guest@example.com', 'email' ) +
-				guestField( i, 'phone', 'Phone (optional)', g.phone, '+31 6 12345678', 'tel' ) +
+				'<p class="tc-guest-heading">' + escapeHtml( i18nFmt( I18N.guestHeading, i + 1 ) ) + '</p>' +
+				guestField( i, 'name', I18N.fullName, g.name, I18N.guestNamePlaceholder ) +
+				guestField( i, 'email', I18N.email, g.email, 'guest@example.com', 'email' ) +
+				guestField( i, 'phone', I18N.phoneOptional, g.phone, '+31 6 12345678', 'tel' ) +
 				'</div>';
 		}
 
-		return '<h2 class="tc-title">Your group’s details</h2>' +
-			'<p class="tc-sub">We need contact details for everyone joining you, so we can reach them if needed.</p>' +
+		return '<h2 class="tc-title">' + escapeHtml( I18N.yourGroupDetails ) + '</h2>' +
+			'<p class="tc-sub">' + escapeHtml( I18N.yourGroupDetailsSub ) + '</p>' +
 			blocks +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	// GitHub issue #48 - an extra with "limit by seats" ticked (admin: Service
@@ -666,12 +705,12 @@
 
 	function renderExtras() {
 		var service = getService( state.serviceId );
-		if ( ! service ) return '<p>Please go back and pick a date.</p>';
+		if ( ! service ) return '<p>' + escapeHtml( I18N.goBackPickDate ) + '</p>';
 		// GitHub issue #53 - full-width title on its own line, then a second
 		// row with price/max (+ info icon for the description, moved out of
 		// the inline text) on the left and the qty stepper on the right.
 		var rows = service.extras.length === 0
-			? '<p style="color:var(--ink-soft);font-size:14px">No extras for this ceremony.</p>'
+			? '<p style="color:var(--ink-soft);font-size:14px">' + escapeHtml( I18N.noExtras ) + '</p>'
 			: service.extras.map( function ( e ) {
 				var max = extraEffectiveMax( e );
 				var qty = Math.min( state.extraQty[ e.key ] || 0, max );
@@ -679,8 +718,8 @@
 				return '<div class="tc-extra-row">' +
 					'<div class="en">' + escapeHtml( e.label ) + '</div>' +
 					'<div class="tc-extra-meta">' +
-					'<div class="ep">' + fmt( e.price ) + ' each \u00b7 max ' + max +
-					( e.description ? '<button type="button" class="tc-info-btn" data-info="' + e.key + '" aria-label="More info about ' + escapeAttr( e.label ) + '">' + INFO_ICON + '</button>' : '' ) +
+					'<div class="ep">' + fmt( e.price ) + ' ' + escapeHtml( I18N.eachUnit ) + ' \u00b7 ' + escapeHtml( I18N.maxUnit ) + ' ' + max +
+					( e.description ? '<button type="button" class="tc-info-btn" data-info="' + e.key + '" aria-label="' + escapeAttr( i18nFmt( I18N.moreInfoAbout, e.label ) ) + '">' + INFO_ICON + '</button>' : '' ) +
 					'</div>' +
 					'<div class="tc-qty"><button data-extra="' + e.key + '" data-dir="-1"' + ( 0 === qty ? ' disabled' : '' ) + '>\u2212</button>' +
 					'<span class="val">' + qty + '</span>' +
@@ -688,30 +727,30 @@
 					'</div></div>';
 			} ).join( '' );
 
-		return '<h2 class="tc-title">Extras &amp; quantity</h2>' + selectionSummary() + rows +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+		return '<h2 class="tc-title">' + escapeHtml( I18N.extrasQuantity ) + '</h2>' + selectionSummary() + rows +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	function renderInfo() {
 		var i = state.info;
-		return '<h2 class="tc-title">Your details</h2>' +
-			field( 'firstName', 'First name', i.firstName, 'Jane' ) +
-			field( 'lastName', 'Last name', i.lastName, 'Doe' ) +
-			field( 'email', 'Email', i.email, 'jane@example.com', 'email' ) +
-			field( 'phone', 'Phone', i.phone, '+31 6 12345678', 'tel' ) +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button><button class="tc-btn primary" id="tc-next">Continue</button></div>';
+		return '<h2 class="tc-title">' + escapeHtml( I18N.yourDetails ) + '</h2>' +
+			field( 'firstName', I18N.firstName, i.firstName, 'Jane' ) +
+			field( 'lastName', I18N.lastName, i.lastName, 'Doe' ) +
+			field( 'email', I18N.email, i.email, 'jane@example.com', 'email' ) +
+			field( 'phone', I18N.phone, i.phone, '+31 6 12345678', 'tel' ) +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 	function field( id, label, value, placeholder, type ) {
 		var err = state.fieldErrors[ id ];
-		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + label + '</label>' +
-			'<input type="' + ( type || 'text' ) + '" id="tc-' + id + '" value="' + escapeAttr( value ) + '" placeholder="' + placeholder + '">' +
+		return '<div class="tc-field' + ( err ? ' invalid' : '' ) + '"><label>' + escapeHtml( label ) + '</label>' +
+			'<input type="' + ( type || 'text' ) + '" id="tc-' + id + '" value="' + escapeAttr( value ) + '" placeholder="' + escapeAttr( placeholder ) + '">' +
 			( err ? '<div class="tc-field-error">' + escapeHtml( err ) + '</div>' : '' ) + '</div>';
 	}
 
 	function renderReview() {
 		var service = getService( state.serviceId );
 		var loc     = getLocation( state.locationId );
-		var dateStr = parseDateStr( state.date ).toLocaleDateString( 'en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } );
+		var dateStr = parseDateStr( state.date ).toLocaleDateString( jsLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } );
 		var extraLines = service.extras.filter( function ( e ) {
 			return ( state.extraQty[ e.key ] || 0 ) > 0;
 		} ).map( function ( e ) {
@@ -721,34 +760,34 @@
 
 		var isParty     = service.allow_party && state.partySize > 1;
 		var basePriceLine = isParty
-			? '<div class="tc-rline"><span class="l">Base price \u00d7 ' + state.partySize + ' people</span><span>' + fmt( service.price * state.partySize ) + '</span></div>'
-			: '<div class="tc-rline"><span class="l">Base price</span><span>' + fmt( service.price ) + '</span></div>';
+			? '<div class="tc-rline"><span class="l">' + escapeHtml( i18nFmt( I18N.basePriceTimesPeople, state.partySize ) ) + '</span><span>' + fmt( service.price * state.partySize ) + '</span></div>'
+			: '<div class="tc-rline"><span class="l">' + escapeHtml( I18N.basePrice ) + '</span><span>' + fmt( service.price ) + '</span></div>';
 
 		var guestLines = isParty
 			? state.guests.slice( 0, state.partySize - 1 ).map( function ( g, i ) {
-				return '<div class="tc-rline"><span class="l">Guest ' + ( i + 1 ) + '</span><span>' + escapeHtml( g.name || '\u2014' ) + '</span></div>';
+				return '<div class="tc-rline"><span class="l">' + escapeHtml( i18nFmt( I18N.guestHeading, i + 1 ) ) + '</span><span>' + escapeHtml( g.name || '\u2014' ) + '</span></div>';
 			} ).join( '' )
 			: '';
 
 		var bookerName  = ( state.info.firstName + ' ' + state.info.lastName ).trim();
-		var bookerLines = '<div class="tc-rline"><span class="l">Booked by</span><span>' + escapeHtml( bookerName || '—' ) + '</span></div>' +
-			'<div class="tc-rline"><span class="l">Email</span><span>' + escapeHtml( state.info.email ) + '</span></div>' +
-			'<div class="tc-rline"><span class="l">Phone</span><span>' + escapeHtml( state.info.phone ) + '</span></div>';
+		var bookerLines = '<div class="tc-rline"><span class="l">' + escapeHtml( I18N.bookedBy ) + '</span><span>' + escapeHtml( bookerName || '—' ) + '</span></div>' +
+			'<div class="tc-rline"><span class="l">' + escapeHtml( I18N.email ) + '</span><span>' + escapeHtml( state.info.email ) + '</span></div>' +
+			'<div class="tc-rline"><span class="l">' + escapeHtml( I18N.phone ) + '</span><span>' + escapeHtml( state.info.phone ) + '</span></div>';
 
-		return '<h2 class="tc-title">Review your booking</h2>' +
-			'<div class="tc-rline"><span class="l">Location</span><span>' + escapeHtml( loc.name ) + '</span></div>' +
-			( state.guide ? '<div class="tc-rline"><span class="l">Guide</span><span>' + escapeHtml( state.guide.name ) + '</span></div>' : '' ) +
-			'<div class="tc-rline"><span class="l">Ceremony</span><span>' + escapeHtml( service.name ) + '</span></div>' +
-			'<div class="tc-rline"><span class="l">Date</span><span>' + dateStr + '</span></div>' +
+		return '<h2 class="tc-title">' + escapeHtml( I18N.reviewBooking ) + '</h2>' +
+			'<div class="tc-rline"><span class="l">' + escapeHtml( I18N.location ) + '</span><span>' + escapeHtml( loc.name ) + '</span></div>' +
+			( state.guide ? '<div class="tc-rline"><span class="l">' + escapeHtml( I18N.guide ) + '</span><span>' + escapeHtml( state.guide.name ) + '</span></div>' : '' ) +
+			'<div class="tc-rline"><span class="l">' + escapeHtml( I18N.ceremony ) + '</span><span>' + escapeHtml( service.name ) + '</span></div>' +
+			'<div class="tc-rline"><span class="l">' + escapeHtml( I18N.date ) + '</span><span>' + dateStr + '</span></div>' +
 			bookerLines +
-			( isParty ? '<div class="tc-rline"><span class="l">Group size</span><span>' + state.partySize + '</span></div>' : '' ) +
+			( isParty ? '<div class="tc-rline"><span class="l">' + escapeHtml( I18N.groupSize ) + '</span><span>' + state.partySize + '</span></div>' : '' ) +
 			guestLines +
 			basePriceLine +
 			extraLines +
-			'<div class="tc-rline total"><span class="l">Total</span><span class="r">' + fmt( grandTotal() ) + '</span></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← Back</button>' +
+			'<div class="tc-rline total"><span class="l">' + escapeHtml( I18N.total ) + '</span><span class="r">' + fmt( grandTotal() ) + '</span></div>' +
+			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button>' +
 			'<button class="tc-btn primary" id="tc-checkout"' + ( state.submitting ? ' disabled' : '' ) + '>' +
-			( state.submitting ? 'Processing\u2026' : 'Continue to checkout' ) + '</button></div>';
+			escapeHtml( state.submitting ? I18N.processing : I18N.continueToCheckout ) + '</button></div>';
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -1052,6 +1091,6 @@
 		state.guidesByLocation = results[ 1 ];
 		render();
 	} ).catch( function ( err ) {
-		root.innerHTML = '<div class="tc-card"><p class="tc-error">Could not load the booking form: ' + escapeHtml( err.message ) + '</p></div>';
+		root.innerHTML = '<div class="tc-card"><p class="tc-error">' + escapeHtml( I18N.couldNotLoadForm ) + ' ' + escapeHtml( err.message ) + '</p></div>';
 	} );
 })();

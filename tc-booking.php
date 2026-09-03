@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a fully custom stack - data model, availability engine, admin panel, front-end, and WooCommerce checkout - for locations, services, and guides.
- * Version:           0.22.2
+ * Version:           0.23.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.22.2' );
+define( 'TC_BOOKING_VERSION', '0.23.0' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );

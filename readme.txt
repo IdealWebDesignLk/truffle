@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.22.2
+Stable tag: 0.23.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,30 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.23.0 =
+* Every static piece of text in the customer-facing booking widget
+  (headings, buttons, labels, validation messages - "Pick a location",
+  "Continue", "Enter a valid email address.", etc., ~70 strings in all)
+  is now translatable via WPML, the same way guide bios and service
+  descriptions already were. Previously these were hardcoded English in
+  public/js/booking-app.js, invisible to WPML entirely, so the widget
+  showed English text regardless of the site's language. They're now
+  localized from PHP (class-tc-booking-shortcode.php's new `i18n` array,
+  each string wrapped in `__()`) and passed to the front-end script, so
+  WPML's automatic "Strings in theme and plugins" scanner picks them up
+  under WPML -> String Translation just like any other plugin text -
+  translate them there.
+* Calendar month names and weekday abbreviations (e.g. "September" /
+  "Mon") and price number formatting (decimal/thousands separators) now
+  follow the customer's WPML language automatically via the browser's
+  own Intl APIs, rather than always rendering in English/US format -
+  no manual translation needed for these, and more accurate than a
+  hand-translated string list would be.
+* If you already use WPML String Translation for this plugin, no action
+  needed - existing guide/service translations are unaffected. New
+  entries for the widget's UI strings will appear the first time the
+  booking widget is loaded after updating.
 
 = 0.22.2 =
 * A guide's name no longer goes through WPML String Translation - it's
