@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.24.1
+Stable tag: 0.24.2
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,16 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.24.2 =
+* Fixed: a deleted appointment kept blocking its date on the booking
+  calendar until it was permanently removed from Trash (GitHub issue
+  #70). Deleting a booking from wp-admin moves it to Trash first, not
+  straight to permanent deletion - the availability engine's two raw SQL
+  queries (`class-tc-availability.php`) checked the booking's `post_type`
+  but never its `post_status`, so a trashed booking was still counted as
+  an active reservation. Now excludes anything not in `publish` status,
+  in addition to the existing `_tc_status = cancelled` exclusion.
 
 = 0.24.1 =
 * Registered the plugin's "tc-booking" text domain with WordPress core

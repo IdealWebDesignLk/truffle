@@ -68,6 +68,19 @@ changing it:
   for ceremony bookings (they're not high-frequency flash-sale purchases),
   but worth a wrapped transaction or a unique-constraint-with-retry if this
   ever needs hardening.
+- **Fixed in 0.24.2 (GitHub issue #70): a trashed booking kept blocking
+  its date.** `guide_available_on()` and `get_party_size_booked()` are
+  raw SQL (not `get_posts()`/`WP_Query`, which default to `publish`-only
+  automatically) - they filtered `p.post_type` but never `p.post_status`,
+  so a booking moved to Trash from wp-admin (the normal first step of
+  "delete," not immediate permanent removal) was still counted as an
+  active reservation right up until the trash was emptied. Both queries
+  now also require `p.post_status = 'publish'`, independent of the
+  existing `_tc_status <> 'cancelled'` exclusion (a separate, deliberate
+  soft-cancel state tracked via meta, not affected by trashing at all).
+  Worth remembering if a similar raw-SQL query is ever added here:
+  `get_posts()` gives you the publish-only default for free, raw SQL
+  against `$wpdb->posts` does not.
 
 ## The duration conversation
 

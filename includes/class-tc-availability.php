@@ -226,6 +226,16 @@ class TC_Availability {
 
 		// 2. Existing bookings for this guide that overlap the span, across
 		// ANY service (a guide can only be in one place at a time).
+		//
+		// GitHub issue #70 - p.post_status = 'publish' matters here: deleting
+		// a booking from wp-admin moves it to Trash first (post_status
+		// 'trash'), it isn't gone from wp_posts until the trash is emptied.
+		// Without this filter a trashed booking kept blocking its date right
+		// up until permanent deletion, even though _tc_status itself was
+		// never touched by trashing (that's a separate, deliberate "soft
+		// cancelled" state tracked via meta - see the NOT IN ('cancelled')
+		// clause below, which is unaffected by this fix). Both a trashed
+		// post and a 'cancelled' status must be excluded independently.
 		$booking_rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT p.ID, pm_date.meta_value AS booking_date, pm_service.meta_value AS booking_service_id
@@ -234,7 +244,7 @@ class TC_Availability {
 				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
 				 INNER JOIN {$wpdb->postmeta} pm_service ON pm_service.post_id = p.ID AND pm_service.meta_key = '_tc_service_id'
 				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
-				 WHERE p.post_type = %s AND pm_guide.meta_value = %d AND pm_status.meta_value NOT IN ('cancelled')",
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d AND pm_status.meta_value NOT IN ('cancelled')",
 				TC_CPT::BOOKING,
 				$guide_id
 			)
@@ -276,6 +286,10 @@ class TC_Availability {
 
 	private static function get_party_size_booked( $guide_id, $service_id, $date_str ) {
 		global $wpdb;
+		// GitHub issue #70 - see the matching comment in guide_available_on()
+		// above: p.post_status = 'publish' excludes trashed bookings, which
+		// otherwise kept counting toward booked capacity until permanently
+		// deleted from Trash.
 		$total = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT SUM(CAST(pm_party.meta_value AS UNSIGNED))
@@ -285,7 +299,7 @@ class TC_Availability {
 				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
 				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
 				 LEFT JOIN {$wpdb->postmeta} pm_party ON pm_party.post_id = p.ID AND pm_party.meta_key = '_tc_party_size'
-				 WHERE p.post_type = %s AND pm_guide.meta_value = %d AND pm_service.meta_value = %d
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d AND pm_service.meta_value = %d
 				   AND pm_date.meta_value = %s AND pm_status.meta_value NOT IN ('cancelled')",
 				TC_CPT::BOOKING,
 				$guide_id,
