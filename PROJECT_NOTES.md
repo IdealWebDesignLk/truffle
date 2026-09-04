@@ -256,6 +256,18 @@ to the viewBox as described above. Don't hand-draw a country outline
 again, and don't run it through aggressive simplification without
 checking that every intended island survived.
 
+**0.25.1 - label legibility over the coastline.** A pin's label can land
+directly on top of the outline stroke (real coastal towns, not just an
+edge case) - the purple line was cutting straight through the letters.
+Fixed with a CSS-only halo: `.tc-pin-label` now paints a thick stroke in
+the map's own background color (`var(--surface-dim)`) underneath its
+fill (`paint-order: stroke`), giving each glyph a soft light background
+regardless of what's behind it. Deliberately not a sized `<rect>` behind
+the text - that would need measuring each label's rendered width,
+awkward given labels are sometimes two `<tspan>` lines (see the
+word-wrapping in `renderLocation()`) - the stroke halo handles that for
+free since it's per-glyph, not per-label-box.
+
 ## WPML support
 
 **Revised twice after real bug reports from the live site.** The

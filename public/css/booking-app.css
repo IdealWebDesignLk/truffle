@@ -189,7 +189,22 @@
 /* GitHub issue #40 - "reduce the size of map location text and dot a
    little bit" - label font-size down from 13px, dot radii (see the
    `r` attribute in booking-app.js's pins map) down from 9/6.5. */
-.tc-pin-label { font-size: 11.5px; font-weight: 500; fill: var(--ink); font-family: inherit; pointer-events: none; }
+/* Halo behind each label so it stays legible where it crosses the map
+   outline/coastline - painted as a thick stroke in the map's own
+   background color, drawn under the fill (paint-order) rather than a
+   sized <rect>, since that'd need measuring each label's (often two-line)
+   text width. */
+.tc-pin-label {
+	font-size: 11.5px;
+	font-weight: 500;
+	fill: var(--ink);
+	font-family: inherit;
+	pointer-events: none;
+	paint-order: stroke;
+	stroke: var(--surface-dim);
+	stroke-width: 3px;
+	stroke-linejoin: round;
+}
 .tc-pin-group.selected .tc-pin-label { fill: var(--brand-light); font-weight: 700; }
 .tc-map-caption { font-size: 11px; color: var(--ink-soft); text-align: center; margin: 4px 0 2px; }
 
