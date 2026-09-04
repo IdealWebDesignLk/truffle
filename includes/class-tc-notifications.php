@@ -109,7 +109,12 @@ class TC_Notifications {
 		return apply_filters( 'tc_booking_admin_email', get_option( 'admin_email' ) );
 	}
 
-	private static function booking_context( $booking_id ) {
+	/**
+	 * Public since GitHub issue #69 - TC_Woocommerce also uses this to
+	 * render the booking summary on the WooCommerce pay-for-order page,
+	 * rather than duplicating this same meta-reading logic there.
+	 */
+	public static function booking_context( $booking_id ) {
 		$post = get_post( $booking_id );
 		if ( ! $post ) {
 			return null;

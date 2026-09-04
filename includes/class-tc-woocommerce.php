@@ -20,6 +20,75 @@ class TC_Woocommerce {
 
 	public static function init() {
 		add_action( 'woocommerce_order_status_changed', array( __CLASS__, 'sync_booking_from_order' ), 10, 4 );
+		// GitHub issue #69 - the booking's own details (location/guide/
+		// ceremony/date/contact info) were only ever shown on the booking
+		// widget's review step, not on the WooCommerce page the customer is
+		// then redirected to for payment - see render_booking_summary().
+		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_pay_page_assets' ) );
+		add_action( 'before_woocommerce_pay', array( __CLASS__, 'render_booking_summary' ) );
+	}
+
+	/**
+	 * booking-app.css is reused here rather than a new stylesheet, so the
+	 * summary below (.tc-card/.tc-title/.tc-rline) looks like the same
+	 * component as the review step, not a bolted-on block - see the
+	 * #tc-checkout-summary-root rules at the top of that file.
+	 */
+	public static function enqueue_pay_page_assets() {
+		if ( function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page() ) {
+			wp_enqueue_style( 'tc-booking-app', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
+		}
+	}
+
+	/**
+	 * GitHub issue #69 - shows the same Location/Guide/Ceremony/Date/Booked
+	 * by/Email/Phone/Total breakdown the customer already saw on the
+	 * booking widget's review step, again on WooCommerce's "pay for order"
+	 * page - the page create_booking() actually sends the customer to
+	 * (get_checkout_payment_url()); this plugin never uses the standard
+	 * cart/checkout flow, only this direct pay-for-a-specific-order one.
+	 * before_woocommerce_pay is WooCommerce's own hook for this exact page,
+	 * firing before the payment form.
+	 */
+	public static function render_booking_summary() {
+		$order_id = absint( get_query_var( 'order-pay' ) );
+		if ( ! $order_id ) {
+			return;
+		}
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+		$booking_id = (int) $order->get_meta( '_tc_booking_id' );
+		if ( ! $booking_id ) {
+			return; // Not a TC Booking order.
+		}
+		$b = TC_Notifications::booking_context( $booking_id );
+		if ( ! $b ) {
+			return;
+		}
+
+		$rows = array(
+			array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+			array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+			array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+			array( __( 'Datum', 'tc-booking' ), date_i18n( get_option( 'date_format' ), strtotime( $b['date'] ) ) ),
+			array( __( 'Geboekt door', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
+			array( __( 'E-mail', 'tc-booking' ), $b['email'] ),
+			array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
+		);
+
+		echo '<div id="tc-checkout-summary-root"><div class="tc-card">';
+		echo '<h2 class="tc-title">' . esc_html__( 'Jouw boeking', 'tc-booking' ) . '</h2>';
+		foreach ( $rows as $row ) {
+			if ( '' === $row[1] ) {
+				continue; // e.g. no guide assigned yet.
+			}
+			echo '<div class="tc-rline"><span class="l">' . esc_html( $row[0] ) . '</span><span>' . esc_html( $row[1] ) . '</span></div>';
+		}
+		echo '<div class="tc-rline total"><span class="l">' . esc_html__( 'Totaal', 'tc-booking' ) . '</span><span class="r">&euro;' .
+			esc_html( number_format_i18n( (float) $b['total'], 2 ) ) . '</span></div>';
+		echo '</div></div>';
 	}
 
 	/**

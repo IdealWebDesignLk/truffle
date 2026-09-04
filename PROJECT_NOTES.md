@@ -574,6 +574,45 @@ showed as "Unknown" in WPML's domain filter, because the plugin declared
 `_load_textdomain_just_in_time` doing-it-wrong notice for loading a
 domain too early).
 
+## Guide dashboard auth pages & checkout summary (GitHub issues #67/#68/#69)
+
+**#67/#68 - login and access-denied pages** (`class-tc-guide-dashboard.php`)
+were previously a single bare line of plain text each, with `wp_login_form()`
+completely unstyled. Both are now a centered `.tc-auth-card` (reusing
+`.tc-card`/`.tc-title`/`.tc-sub` from the rest of the widget, plus new
+`.tc-auth-*` rules in `booking-app.css` - shadow, max-width 520px, restyled
+form fields) instead of a new one-off design. `wp_login_form()`'s own markup
+(`#loginform`, `#user_login`, `#user_pass`, `.login-remember`, `#wp-submit`)
+is restyled via CSS rather than rebuilt from scratch, scoped under
+`.tc-auth-card` so it can't leak onto the real wp-admin login screen
+elsewhere on the site. The access-denied page's heading/description/button
+labels use the exact Dutch copy suggested in issue #68. Its "Contact
+opnemen" button has no obvious destination in this plugin (no dedicated
+contact-page concept) - filterable via `tc_booking_contact_url`, defaulting
+to a `mailto:` link to the site's admin email so it always works without
+extra configuration.
+
+**#69 - booking details on the WooCommerce checkout page**
+(`class-tc-woocommerce.php`): the booking widget's review step already
+showed Location/Guide/Ceremony/Date/Booked by/Email/Phone/Total, but none
+of it carried over to the WooCommerce page the customer is redirected to
+for payment - only the fee line's compressed name/price showed there.
+`render_booking_summary()` reads the same booking meta via
+`TC_Notifications::booking_context()` (made `public` for this reuse rather
+than duplicating the meta-reading logic) and outputs the same
+`.tc-card`/`.tc-rline` breakdown, hooked to `before_woocommerce_pay`.
+**Not verified against a real WooCommerce install** - `before_woocommerce_pay`
+and the `order-pay` query var are both genuine, long-standing WooCommerce
+APIs (unlike the WPML specifics elsewhere in this file, these are core
+WooCommerce, not something guessed from an unfamiliar admin screen), but
+this dev environment has no live WooCommerce to confirm the hook actually
+fires where expected on the pay-for-order page. Fails silently (nothing
+rendered) rather than fatally if the hook name or query var turn out wrong,
+so worth a quick visual check on staging rather than assuming it's correct.
+
+All three new pieces of customer/guide-facing text are written in Dutch,
+matching the source-language decision from the WPML sections above.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

@@ -1,5 +1,5 @@
 /* TC Booking - front-end styles. Ported from the approved prototype. */
-#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root {
+#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root {
   /* GitHub issue #22 - brand accent (buttons, progress bar, selection
      borders/focus, map pins) switched from green to purple, and the warm
      brown/cream neutrals lightened toward white - to match Truffle
@@ -43,7 +43,15 @@
   color: var(--ink);
   line-height: 1.55;
 }
-#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root * { box-sizing: border-box; }
+#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root * { box-sizing: border-box; }
+
+/* GitHub issue #69 - booking summary on the WooCommerce pay-for-order
+   page, reusing .tc-card/.tc-title/.tc-rline from the review step so it
+   looks like the same component rather than a bolted-on block. Only
+   margin-bottom is specific to this context (the payment form follows
+   directly after it, unlike .tc-card elsewhere which is the whole page). */
+#tc-checkout-summary-root { max-width: none; margin: 0 0 24px; }
+#tc-checkout-summary-root .tc-card { padding: 22px; }
 
 .tc-progress { display: flex; gap: 4px; margin-bottom: 24px; }
 .tc-progress .seg { flex: 1; height: 4px; border-radius: 3px; background: var(--line); }
@@ -334,3 +342,32 @@
 .tc-cal-day.booked, .tc-cal-day.limited { background: var(--limited-bg); color: var(--limited); }
 .tc-cal-day.past { visibility: hidden; }
 .tc-cal-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; font-weight: 700; }
+
+/* GitHub issues #67/#68 - guide dashboard login + access-denied pages,
+   previously a single bare line of text with no styling at all. */
+.tc-auth-wrap { display: flex; justify-content: center; padding: 48px 16px; }
+.tc-auth-card { width: 100%; max-width: 520px; text-align: center; box-shadow: 0 4px 24px rgba(35, 31, 46, .08); }
+.tc-auth-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--brand-bg); color: var(--brand-deep); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+.tc-auth-card .tc-title { text-align: center; }
+.tc-auth-card .tc-sub { text-align: center; max-width: 400px; margin: 0 auto 24px; }
+.tc-auth-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.tc-auth-actions .tc-btn { text-decoration: none; display: inline-block; }
+
+/* wp_login_form() output, restyled to match the rest of the widget - the
+   IDs/classes below (#loginform, #user_login, #user_pass, #wp-submit,
+   .login-username, .login-password, .login-remember, .login-submit) are
+   WordPress core's own login form markup, not this plugin's - scoped
+   under .tc-auth-card so none of this leaks onto the real wp-admin login
+   screen elsewhere on the site. */
+.tc-auth-card #loginform { text-align: left; }
+.tc-auth-card .login-username, .tc-auth-card .login-password { margin-bottom: 16px; }
+.tc-auth-card #loginform label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-soft); margin-bottom: 6px; }
+.tc-auth-card #user_login, .tc-auth-card #user_pass { width: 100%; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 15px; font-family: inherit; color: var(--ink); background: var(--surface); }
+.tc-auth-card #user_login:focus, .tc-auth-card #user_pass:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-bg); }
+.tc-auth-card .login-remember { margin: 4px 0 20px; font-size: 13.5px; color: var(--ink-soft); }
+.tc-auth-card .login-remember label { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
+.tc-auth-card .login-remember input { margin: 0; }
+.tc-auth-card .login-submit { margin: 0; }
+.tc-auth-card #wp-submit { width: 100%; -webkit-appearance: none; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 600; cursor: pointer; border: 1px solid var(--brand-deep); background: var(--brand-deep); color: #fff; }
+.tc-auth-card #wp-submit:hover { background: var(--brand); border-color: var(--brand); }
+.tc-auth-card #wp-submit:focus { outline: none; box-shadow: 0 0 0 3px var(--brand-bg); }
