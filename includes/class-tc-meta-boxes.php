@@ -27,10 +27,21 @@ class TC_Meta_Boxes {
 
 	public static function enqueue( $hook ) {
 		global $post_type, $post;
-		if ( ! in_array( $post_type, array( TC_CPT::SERVICE, TC_CPT::GUIDE ), true ) ) {
+		if ( ! in_array( $post_type, array( TC_CPT::SERVICE, TC_CPT::GUIDE, TC_CPT::BOOKING ), true ) ) {
 			return;
 		}
 		wp_enqueue_style( 'tc-admin', TC_BOOKING_URL . 'admin/css/admin.css', array(), TC_BOOKING_VERSION );
+
+		if ( TC_CPT::BOOKING === $post_type ) {
+			// render_new_booking_form()'s extras/guest rows - only relevant
+			// before a booking has a service yet, same condition
+			// render_booking() itself uses to decide which view to show.
+			if ( $post && ! (int) get_post_meta( $post->ID, '_tc_service_id', true ) ) {
+				self::enqueue_new_booking_form();
+			}
+			return;
+		}
+
 		wp_enqueue_script( 'tc-admin', TC_BOOKING_URL . 'admin/js/admin.js', array( 'jquery' ), TC_BOOKING_VERSION, true );
 
 		// Availability calendar only makes sense once the guide has an ID to
@@ -48,6 +59,56 @@ class TC_Meta_Boxes {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Every service's price/allow_party/max_capacity/extras, so
+	 * admin/js/booking-form.js can render the right extras list and
+	 * enable/limit group size the moment a service is picked, without a
+	 * round trip. Small data set (this plugin's whole service catalog,
+	 * not per-customer data) so sending it all up front rather than
+	 * fetching per-selection is the simpler choice.
+	 */
+	private static function enqueue_new_booking_form() {
+		wp_enqueue_script( 'tc-booking-form', TC_BOOKING_URL . 'admin/js/booking-form.js', array( 'jquery' ), TC_BOOKING_VERSION, true );
+
+		$services = array();
+		foreach ( get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1 ) ) as $post ) {
+			$service    = TC_Availability::get_service_data( $post->ID );
+			$services[] = array(
+				'id'           => $service['id'],
+				'allow_party'  => $service['allow_party'],
+				'max_capacity' => $service['max_capacity'],
+				'extras'       => array_map(
+					function ( $extra ) {
+						return array(
+							'key'   => $extra['key'],
+							'label' => $extra['label'],
+							'price' => (float) $extra['price'],
+							'max'   => (int) $extra['max'],
+						);
+					},
+					$service['extras']
+				),
+			);
+		}
+
+		wp_localize_script(
+			'tc-booking-form',
+			'tcNewBookingForm',
+			array(
+				'services' => $services,
+				'i18n'     => array(
+					'pickService' => __( 'Pick a service above to see its extras.', 'tc-booking' ),
+					'noExtras'    => __( 'No extras for this service.', 'tc-booking' ),
+					'each'        => __( 'each', 'tc-booking' ),
+					'guest'       => __( 'Guest', 'tc-booking' ),
+					'name'        => __( 'Name', 'tc-booking' ),
+					'email'       => __( 'Email', 'tc-booking' ),
+					'phone'       => __( 'Phone', 'tc-booking' ),
+				),
+			)
+		);
 	}
 
 	public static function register() {
@@ -400,11 +461,14 @@ class TC_Meta_Boxes {
 	 * previously the Booking post type only supported a title, so "Add
 	 * New" gave an admin nowhere to actually enter booking details.
 	 *
-	 * Deliberately narrower than the customer-facing widget: no extras or
-	 * additional guests (an admin can note either in the note field below,
-	 * once the booking exists), and the guide is auto-assigned via
-	 * TC_Availability::pick_guide() rather than picked here, exactly like
-	 * the real booking flow - never fork that matching logic. Skips
+	 * Extras and additional guests are supported (admin/js/booking-form.js
+	 * renders both dynamically - extras depend on which service is picked,
+	 * guest rows on the chosen group size, neither known until then), and
+	 * validated server-side in save_new_booking() the exact same way
+	 * TC_Rest_Api::create_booking() validates them - same limit_by_seats
+	 * cap, same extra-N-person party-size growth, never a forked copy of
+	 * that logic. The guide itself is still never picked manually, always
+	 * TC_Availability::pick_guide(), same as the real booking flow. Skips
 	 * WooCommerce/payment entirely and marks the booking 'confirmed'
 	 * directly (no confirmation email either) - the assumption is this
 	 * form is for a booking already arranged/paid outside the online flow;
@@ -454,7 +518,20 @@ class TC_Meta_Boxes {
 				<th><label for="tc_new_party_size"><?php esc_html_e( 'Group size', 'tc-booking' ); ?></label></th>
 				<td>
 					<input type="number" id="tc_new_party_size" name="tc_new_party_size" value="1" min="1" step="1" style="width:80px;">
-					<p class="description"><?php esc_html_e( 'Only relevant for a service with "bring anyone with you" enabled - ignored (treated as 1) otherwise.', 'tc-booking' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Only enabled for a service with "bring anyone with you" turned on - fixed at 1 otherwise. Pick a service above first.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Extras', 'tc-booking' ); ?></th>
+				<td>
+					<div id="tc-new-extras-list"><p class="description"><?php esc_html_e( 'Pick a service above to see its extras.', 'tc-booking' ); ?></p></div>
+				</td>
+			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Additional guests', 'tc-booking' ); ?></th>
+				<td>
+					<div id="tc-new-guests-list"></div>
+					<p class="description"><?php esc_html_e( 'Rows appear automatically based on group size, for a service that allows bringing others.', 'tc-booking' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -640,6 +717,10 @@ class TC_Meta_Boxes {
 		$phone       = isset( $_POST['tc_new_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_phone'] ) ) : '';
 		$party_size  = isset( $_POST['tc_new_party_size'] ) ? max( 1, (int) $_POST['tc_new_party_size'] ) : 1;
 		$total_input = isset( $_POST['tc_new_total'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_total'] ) ) : '';
+		$extras_in   = isset( $_POST['tc_new_extra_qty'] ) && is_array( $_POST['tc_new_extra_qty'] ) ? wp_unslash( $_POST['tc_new_extra_qty'] ) : array();
+		$guest_names  = isset( $_POST['tc_new_guest_name'] ) && is_array( $_POST['tc_new_guest_name'] ) ? wp_unslash( $_POST['tc_new_guest_name'] ) : array();
+		$guest_emails = isset( $_POST['tc_new_guest_email'] ) && is_array( $_POST['tc_new_guest_email'] ) ? wp_unslash( $_POST['tc_new_guest_email'] ) : array();
+		$guest_phones = isset( $_POST['tc_new_guest_phone'] ) && is_array( $_POST['tc_new_guest_phone'] ) ? wp_unslash( $_POST['tc_new_guest_phone'] ) : array();
 
 		// Nothing filled in at all (just a title typed and saved) - not an
 		// error, just don't turn this into a half-built booking.
@@ -658,12 +739,72 @@ class TC_Meta_Boxes {
 			return;
 		}
 
-		$party_size = $service['allow_party'] ? min( $party_size, max( 1, (int) $service['max_capacity'] ) ) : 1;
-
 		if ( ! TC_Availability::is_bookable( $service_id, $location_id, $date ) ) {
 			self::new_booking_error( $post_id, __( 'That service isn\'t available at that location on that date.', 'tc-booking' ) );
 			return;
 		}
+
+		// Extras/guests validation below mirrors TC_Rest_Api::create_booking()
+		// step for step (party_size first, then extras - which can still grow
+		// party_size via the extra-N-person convention, or cap a
+		// limit_by_seats extra's quantity - then guests, then guide
+		// assignment with the FINAL party_size) - never a forked copy of that
+		// logic, see this method's docblock.
+		$party_size = $service['allow_party'] ? min( $party_size, max( 1, (int) $service['max_capacity'] ) ) : 1;
+
+		$valid_extras = array();
+		$extras_total = 0;
+		foreach ( $extras_in as $key => $qty ) {
+			$key = sanitize_title( $key );
+			$qty = max( 0, (int) $qty );
+			if ( ! $key || ! $qty ) {
+				continue;
+			}
+			foreach ( $service['extras'] as $extra ) {
+				if ( $extra['key'] === $key ) {
+					$extra_max = (int) $extra['max'];
+					if ( ! empty( $extra['limit_by_seats'] ) ) {
+						$extra_max = min( $extra_max, $party_size );
+					}
+					$qty = min( $qty, $extra_max );
+					if ( $qty <= 0 ) {
+						break;
+					}
+					$valid_extras[] = array(
+						'key'   => $key,
+						'label' => $extra['label'],
+						'price' => (float) $extra['price'],
+						'qty'   => $qty,
+					);
+					$extras_total += $qty * (float) $extra['price'];
+					if ( preg_match( '/extra-(\d+)-person/', $key, $m ) ) {
+						$party_size += (int) $m[1] * $qty;
+					}
+					break;
+				}
+			}
+		}
+
+		$guests = array();
+		if ( $service['allow_party'] ) {
+			$count = max( count( $guest_names ), count( $guest_emails ), count( $guest_phones ) );
+			for ( $i = 0; $i < $count; $i++ ) {
+				$g_name  = isset( $guest_names[ $i ] ) ? sanitize_text_field( $guest_names[ $i ] ) : '';
+				$g_email = isset( $guest_emails[ $i ] ) && is_email( $guest_emails[ $i ] ) ? sanitize_email( $guest_emails[ $i ] ) : '';
+				$g_phone = isset( $guest_phones[ $i ] ) ? sanitize_text_field( $guest_phones[ $i ] ) : '';
+				if ( '' === $g_name && '' === $g_email && '' === $g_phone ) {
+					continue; // Skip blank rows.
+				}
+				$guests[] = array(
+					'name'  => $g_name,
+					'email' => $g_email,
+					'phone' => $g_phone,
+				);
+			}
+			// Never store more guest rows than the group size allows.
+			$guests = array_slice( $guests, 0, max( 0, $party_size - 1 ) );
+		}
+
 		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $date, $party_size );
 		if ( ! $guide_id ) {
 			// pick_guide() can fail here even though is_bookable() passed -
@@ -674,7 +815,7 @@ class TC_Meta_Boxes {
 			return;
 		}
 
-		$total = is_numeric( $total_input ) ? (float) $total_input : $service['price'] * ( $service['allow_party'] ? $party_size : 1 );
+		$total = is_numeric( $total_input ) ? (float) $total_input : ( $service['price'] * ( $service['allow_party'] ? $party_size : 1 ) ) + $extras_total;
 
 		update_post_meta( $post_id, '_tc_service_id', $service_id );
 		update_post_meta( $post_id, '_tc_location_id', $location_id );
@@ -682,8 +823,8 @@ class TC_Meta_Boxes {
 		update_post_meta( $post_id, '_tc_date', $date );
 		update_post_meta( $post_id, '_tc_status', 'confirmed' );
 		update_post_meta( $post_id, '_tc_party_size', $party_size );
-		update_post_meta( $post_id, '_tc_guests', array() );
-		update_post_meta( $post_id, '_tc_selected_extras', array() );
+		update_post_meta( $post_id, '_tc_guests', $guests );
+		update_post_meta( $post_id, '_tc_selected_extras', $valid_extras );
 		update_post_meta( $post_id, '_tc_customer_first_name', $first_name );
 		update_post_meta( $post_id, '_tc_customer_last_name', $last_name );
 		update_post_meta( $post_id, '_tc_customer_email', $email );

@@ -666,14 +666,41 @@ different from the online flow:
   never called here - the admin has presumably already spoken to the
   customer directly.
 
-Deliberately narrower than the customer-facing widget in scope, too: no
-extras, no additional guests (an admin can note either in the existing
-"Admin note" field once the booking exists, since that field only shows
-in the read-only view - it isn't part of this creation form). The guide
-is never picked manually - always `pick_guide()`, matching every other
-guide-assignment path in the plugin. "Total price" defaults to the
-service's own price (× group size if the service allows a party) but can
-be typed over, for a phone-arranged discount or similar.
+The guide is never picked manually - always `pick_guide()`, matching
+every other guide-assignment path in the plugin. "Total price" defaults
+to the service's own price (× group size if the service allows a party,
+plus any extras chosen) but can be typed over, for a phone-arranged
+discount or similar.
+
+**Extras and additional guests (added right after the first cut of this
+feature shipped without them)**: `render_new_booking_form()` renders
+empty containers (`#tc-new-extras-list`, `#tc-new-guests-list`) that
+`admin/js/booking-form.js` fills in dynamically - extras depend on which
+service is picked (each service has its own extras list), guest row
+count on the chosen group size, neither known until then. Every
+service's price/allow_party/max_capacity/extras is localized up front
+(`TC_Meta_Boxes::enqueue_new_booking_form()` - this plugin's whole
+service catalog is a small enough data set that sending it all beats a
+fetch-per-selection round trip) so the JS can react instantly without a
+REST call.
+
+Field names double as the server-side contract: extras post as
+`tc_new_extra_qty[key]` (an associative array, read directly by PHP - no
+JSON encoding needed), guests as parallel indexed arrays
+(`tc_new_guest_name[]`/`email[]`/`phone[]`). `save_new_booking()`
+validates both **exactly the way `create_booking()` does** - same order
+(`is_bookable()` -> party_size -> extras, which can still grow party_size
+via the extra-N-person convention or get capped by `limit_by_seats` ->
+guests, sliced to `party_size - 1` -> `pick_guide()` with the *final*
+party_size) and the same rules, ported line-for-line rather than
+re-derived, and verified against a standalone test asserting the ported
+logic produces identical results to the documented `create_booking()`
+behavior (a `limit_by_seats` extra capped at the current party size, an
+`extra-N-person` extra growing party_size and that growth affecting a
+*later* `limit_by_seats` extra in the same submission, guest rows sliced
+to `party_size - 1`). Never trust the client's submitted quantities/rows
+against what a service's extras actually allow, same as everywhere else
+this plugin accepts extras input.
 
 `wp_update_post()` is called at the end of `save_new_booking()` to
 replace the placeholder title (whatever the admin typed to get past

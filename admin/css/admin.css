@@ -59,6 +59,17 @@
 	max-height: 90vh;
 	overflow-y: auto;
 }
+/* "Add New" booking form (class-tc-meta-boxes.php's render_new_booking_form())
+   - extras/additional-guest rows rendered by admin/js/booking-form.js */
+.tc-new-extra-row, .tc-new-guest-row {
+	margin: 0 0 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #e0dfe4;
+}
+.tc-new-extra-row:last-child, .tc-new-guest-row:last-child {
+	border-bottom: none;
+}
+
 .tc-reschedule-close {
 	position: absolute;
 	top: 12px;
