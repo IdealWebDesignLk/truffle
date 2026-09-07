@@ -734,7 +734,12 @@ class TC_Rest_Api {
 		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
 		$end    = self::sanitize_date( $request->get_param( 'end' ) ) ?: $bounds[1];
 
-		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
+		return rest_ensure_response(
+			array(
+				'availability' => self::fetch_guide_availability( $guide->ID, $start, $end ),
+				'bookings'      => self::fetch_guide_bookings( $guide->ID, $start, $end ),
+			)
+		);
 	}
 
 	public static function guide_set_availability( WP_REST_Request $request ) {
@@ -747,6 +752,9 @@ class TC_Rest_Api {
 
 		if ( ! $date || ! $status ) {
 			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
+		}
+		if ( 'blocked' === $status && self::guide_has_booking_on( $guide->ID, $date ) ) {
+			return new WP_Error( 'tc_has_booking', __( 'Er is al een boeking op deze datum - deze kan niet als vrije dag worden gemarkeerd.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
 		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
@@ -768,7 +776,12 @@ class TC_Rest_Api {
 		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
 		$end    = self::sanitize_date( $request->get_param( 'end' ) ) ?: $bounds[1];
 
-		return rest_ensure_response( self::fetch_guide_availability( $guide->ID, $start, $end ) );
+		return rest_ensure_response(
+			array(
+				'availability' => self::fetch_guide_availability( $guide->ID, $start, $end ),
+				'bookings'      => self::fetch_guide_bookings( $guide->ID, $start, $end ),
+			)
+		);
 	}
 
 	public static function admin_set_guide_availability( WP_REST_Request $request ) {
@@ -784,6 +797,13 @@ class TC_Rest_Api {
 
 		if ( ! $date || ! $status ) {
 			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
+		}
+		// wp-admin-facing, so English (unlike guide_set_availability()'s
+		// front-end/guide-facing version of this same check) - see the
+		// WPML support notes on why this plugin's admin screens stay
+		// English while front-end/guide text is written in Dutch.
+		if ( 'blocked' === $status && self::guide_has_booking_on( $guide->ID, $date ) ) {
+			return new WP_Error( 'tc_has_booking', __( 'This guide already has a booking on that date - it cannot be marked as a day off.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
 		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
@@ -824,6 +844,79 @@ class TC_Rest_Api {
 			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
 		}
 		return $data;
+	}
+
+	/**
+	 * This guide's actual bookings within the range, grouped by date, so
+	 * the calendar (public/js/guide-dashboard.js and its admin-editing
+	 * counterpart, admin/js/guide-availability.js) can show what's already
+	 * booked instead of just the manually-set blocked/available exceptions
+	 * from fetch_guide_availability() above - and so guide_set_availability()
+	 * /admin_set_guide_availability() can refuse to mark an already-booked
+	 * date as a day off, which would leave a real booking sitting on a date
+	 * the calendar claims is free.
+	 *
+	 * p.post_status = 'publish' and excluding _tc_status = 'cancelled'
+	 * mirrors TC_Availability::guide_available_on()'s own booking query
+	 * exactly (see GitHub issue #70's fix there) - a trashed or cancelled
+	 * booking must not show as "booked" here either.
+	 */
+	private static function fetch_guide_bookings( $guide_id, $start, $end ) {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT pm_date.meta_value AS booking_date, pm_service.meta_value AS service_id,
+				        pm_fname.meta_value AS first_name, pm_lname.meta_value AS last_name
+				 FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
+				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
+				 INNER JOIN {$wpdb->postmeta} pm_service ON pm_service.post_id = p.ID AND pm_service.meta_key = '_tc_service_id'
+				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
+				 LEFT JOIN {$wpdb->postmeta} pm_fname ON pm_fname.post_id = p.ID AND pm_fname.meta_key = '_tc_customer_first_name'
+				 LEFT JOIN {$wpdb->postmeta} pm_lname ON pm_lname.post_id = p.ID AND pm_lname.meta_key = '_tc_customer_last_name'
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
+				   AND pm_date.meta_value BETWEEN %s AND %s AND pm_status.meta_value != 'cancelled'",
+				TC_CPT::BOOKING,
+				$guide_id,
+				$start,
+				$end
+			)
+		);
+
+		$by_date = array();
+		foreach ( $rows as $row ) {
+			if ( ! isset( $by_date[ $row->booking_date ] ) ) {
+				$by_date[ $row->booking_date ] = array();
+			}
+			$by_date[ $row->booking_date ][] = trim(
+				get_the_title( (int) $row->service_id ) . ' — ' . trim( $row->first_name . ' ' . $row->last_name )
+			);
+		}
+
+		$data = array();
+		foreach ( $by_date as $date => $summaries ) {
+			$data[] = array( 'date' => $date, 'summary' => implode( '; ', $summaries ) );
+		}
+		return $data;
+	}
+
+	/** Used by guide_set_availability()/admin_set_guide_availability() to refuse marking an already-booked date as a day off. */
+	private static function guide_has_booking_on( $guide_id, $date ) {
+		global $wpdb;
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
+				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
+				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
+				   AND pm_date.meta_value = %s AND pm_status.meta_value != 'cancelled'",
+				TC_CPT::BOOKING,
+				$guide_id,
+				$date
+			)
+		);
+		return $count > 0;
 	}
 
 	private static function upsert_guide_availability( $guide_id, $date, $status, $note ) {

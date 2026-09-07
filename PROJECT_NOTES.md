@@ -748,6 +748,62 @@ skipping the customer confirmation email too (see the section above);
 the assumption there is the booking was arranged directly, guide
 included.
 
+## Guide calendar: booked dates shown, past dates already excluded
+
+Two things about a guide's own availability calendar (`public/js/
+guide-dashboard.js`, and its admin-editing-on-behalf counterpart
+`admin/js/guide-availability.js`, which share the same UI/behavior and
+were kept in lockstep for this too):
+
+**Past dates were already fully handled** before this change - `isPast`
+already withheld `data-date`/`data-blocked` (making a past cell
+unclickable), and `.tc-cal-day.past` is `visibility: hidden` in
+`booking-app.css` (so past days in the visible month aren't just
+unclickable, they're not shown at all - same treatment as the leading
+empty cells before day 1). A guide can only ever set availability for
+today or later. Nothing needed changing here.
+
+**Booked dates now actually show, and can't be marked as a day off** -
+`guide-dashboard.js`'s own top-of-file comment had claimed "dates with
+an existing booking are shown but not clickable" since it was first
+written, but no booking data was ever actually fetched or rendered - the
+calendar only ever showed the `wp_tc_guide_availability` exception table
+(blocked/available), with real bookings invisible to it entirely. Fixed
+by:
+
+- `TC_Rest_Api::fetch_guide_bookings()` (new) - this guide's actual
+  bookings in the visible date range, grouped by date, each with a
+  `service — customer name` summary (joined with `; ` if a shared
+  service has more than one booking on the same day). `p.post_status =
+  'publish'` + excluding `_tc_status = 'cancelled'` mirrors
+  `TC_Availability::guide_available_on()`'s own booking query exactly
+  (GitHub issue #70's fix) - a trashed or cancelled booking must not
+  show as "booked" here either, same reasoning.
+- `guide_get_availability()`/`admin_get_guide_availability()`'s response
+  shape changed from a flat array to `{ availability: [...], bookings:
+  [...] }` - both endpoints only exist for this calendar (not consumed
+  anywhere else), so this wasn't a concern for any other caller.
+- The calendar's `render()`: a date with a booking always shows the
+  existing `.booked` CSS class (amber - was already defined in
+  `booking-app.css`, just never applied) with the summary as a `title`
+  tooltip, and never gets `data-date` - so it's non-clickable exactly
+  like a past date, taking priority over whatever the availability table
+  separately says for that date.
+- `guide_set_availability()`/`admin_set_guide_availability()` also
+  reject the write server-side (`tc_has_booking`, 409) if `status =
+  'blocked'` is requested for a date `TC_Rest_Api::guide_has_booking_on()`
+  finds an active booking on - the client-side omission of `data-date`
+  is only the UI half; a direct API call (or a stale page) must not be
+  able to leave a real booking sitting on a date the calendar claims is
+  free. The guide-facing error message is Dutch, the admin-facing one
+  English, per this plugin's established split on that.
+
+Verified in a browser against a mocked `/guide/availability` response
+(both the old blocked/available and new booking data) - confirmed booked
+cells render amber with the right tooltip text, have no `data-date`
+(so no click handler attaches) and the default cursor, and that past
+dates remain fully hidden.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

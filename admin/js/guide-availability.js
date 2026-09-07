@@ -5,7 +5,9 @@
  * own self-service page), but talks to the admin-only REST routes and
  * operates on the guide ID baked into this edit screen instead of resolving
  * "the guide" from the currently logged-in user - so an admin can manage any
- * guide's calendar without logging in as them.
+ * guide's calendar without logging in as them. Booked-date handling (shown
+ * amber with a tooltip, not clickable, past dates hidden) mirrors that file
+ * exactly - see its top-of-file comment for the full reasoning.
  */
 ( function () {
 	'use strict';
@@ -24,6 +26,7 @@
 	var state = {
 		monthOffset: 0,
 		availability: {}, // date -> 'blocked' | 'available'
+		bookings: {}, // date -> summary string, for dates with a real booking
 		loading: true,
 		error: null,
 	};
@@ -45,6 +48,15 @@
 			}
 			return data;
 		} );
+	}
+
+	function escapeHtml( str ) {
+		var div = document.createElement( 'div' );
+		div.textContent = str == null ? '' : String( str );
+		return div.innerHTML;
+	}
+	function escapeAttr( str ) {
+		return escapeHtml( str ).replace( /"/g, '&quot;' );
 	}
 
 	var SITE_TZ = 'Europe/Amsterdam';
@@ -88,9 +100,11 @@
 		render();
 		var bounds = monthBounds( state.monthOffset );
 		apiGet( BASE + '?start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
-			.then( function ( rows ) {
+			.then( function ( data ) {
 				state.availability = {};
-				rows.forEach( function ( r ) { state.availability[ r.date ] = r.status; } );
+				( data.availability || [] ).forEach( function ( r ) { state.availability[ r.date ] = r.status; } );
+				state.bookings = {};
+				( data.bookings || [] ).forEach( function ( r ) { state.bookings[ r.date ] = r.summary; } );
 				state.loading = false;
 				render();
 			} )
@@ -126,14 +140,19 @@
 			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
 			var iso     = isoDate( dateObj );
 			var status  = state.availability[ iso ] || 'available';
+			var booking = state.bookings[ iso ];
 			var isPast  = dateObj < today;
-			var cls     = isPast ? 'past' : ( 'blocked' === status ? 'blocked' : 'available' );
-			cells += '<div class="tc-cal-day ' + cls + '"' + ( isPast ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"' ) + '>' + d + '</div>';
+			var cls   = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
+			var attrs = ( isPast || booking ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
+			if ( booking && ! isPast ) {
+				attrs += ' title="' + escapeAttr( booking ) + '"';
+			}
+			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
 		root.innerHTML = '<div class="tc-card">' +
-			( state.error ? '<div class="tc-error">' + state.error + '</div>' : '' ) +
-			'<p class="tc-sub">Tap a date to toggle it between available and a day off, on this guide’s behalf.</p>' +
+			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
+			'<p class="tc-sub">Tap a date to toggle it between available and a day off, on this guide’s behalf. Booked dates (hover for details) can’t be changed here.</p>' +
 			'<div class="tc-grid-nav"><button id="tc-admin-prev-month" type="button">←</button><span class="range">' + monthName + '</span><button id="tc-admin-next-month" type="button">→</button></div>' +
 			( state.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +
@@ -141,6 +160,7 @@
 			'<div class="tc-legend" style="margin-top:16px;">' +
 			'<span><span class="tc-swatch" style="background:var(--available)"></span>Available</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Day off</span>' +
+			'<span><span class="tc-swatch" style="background:var(--limited)"></span>Booked</span>' +
 			'</div></div>';
 
 		var prev = document.getElementById( 'tc-admin-prev-month' );
