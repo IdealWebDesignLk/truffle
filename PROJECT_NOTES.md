@@ -625,6 +625,64 @@ so worth a quick visual check on staging rather than assuming it's correct.
 All three new pieces of customer/guide-facing text are written in Dutch,
 matching the source-language decision from the WPML sections above.
 
+## Manually adding a booking from wp-admin (`class-tc-meta-boxes.php`)
+
+Booking only ever `'supports' => array( 'title' )` (`class-tc-cpt.php`) -
+every other field came from `render_booking()`'s meta box, which was
+*read-only* (built assuming a booking only ever gets created through the
+customer-facing widget / REST API). Bookings -> Add New therefore had
+nowhere to actually enter details, just a title field - reported as "I
+can only type the title, I need to be able to add bookings from the
+backend."
+
+`render_booking()` now dispatches on whether `_tc_service_id` is already
+set: no service yet -> `render_new_booking_form()` (an editable form),
+otherwise the existing read-only display. `save_new_booking()` (hooked
+to `save_post_tc_booking` alongside the existing `save_booking_note()`)
+handles the actual creation, reusing `TC_Availability::is_bookable()` /
+`pick_guide()` - the exact same validation and guide-assignment the
+customer-facing REST endpoint uses - rather than a second, possibly-
+divergent set of rules for the admin form. On any validation failure the
+booking meta is simply left unset, so `render_booking()`'s same
+`_tc_service_id` check makes the form reappear (with the error shown
+inline via a short-lived transient) for another attempt - no redirect
+handling needed, unlike `TC_Admin_Bookings`'s cancel/reschedule actions
+(those are separate `admin-post.php` actions, not a `save_post` hook, so
+a redirect there is normal; doing that from inside `save_post` would
+short-circuit WordPress's own post-save flow and any other plugin's
+`save_post` hooks that haven't run yet).
+
+Two deliberate choices from discussing this with the client, both
+different from the online flow:
+
+- **No WooCommerce order, no payment.** The booking is marked
+  `_tc_status = 'confirmed'` directly. This form is for a booking already
+  arranged (and typically already paid) outside the online flow - a
+  phone booking, for instance - not a way to send a customer a payment
+  link. (If a payment link ever *is* needed from wp-admin, that's a
+  different, unbuilt feature - this form intentionally doesn't create an
+  order at all.)
+- **No confirmation email.** `TC_Notifications::send_confirmation()` is
+  never called here - the admin has presumably already spoken to the
+  customer directly.
+
+Deliberately narrower than the customer-facing widget in scope, too: no
+extras, no additional guests (an admin can note either in the existing
+"Admin note" field once the booking exists, since that field only shows
+in the read-only view - it isn't part of this creation form). The guide
+is never picked manually - always `pick_guide()`, matching every other
+guide-assignment path in the plugin. "Total price" defaults to the
+service's own price (× group size if the service allows a party) but can
+be typed over, for a phone-arranged discount or similar.
+
+`wp_update_post()` is called at the end of `save_new_booking()` to
+replace the placeholder title (whatever the admin typed to get past
+WordPress's empty-title guard) with a real one, matching
+`create_booking()`'s own title convention. This is safe from infinite
+recursion despite firing `save_post_tc_booking` again immediately:
+`_tc_service_id` is already written to meta by that point, so the
+re-entrant call hits this method's own early-return guard right away.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

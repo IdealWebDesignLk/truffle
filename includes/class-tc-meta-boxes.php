@@ -1,6 +1,10 @@
 <?php
 /**
- * Admin meta boxes for Location, Service, Guide, and Booking (read-only).
+ * Admin meta boxes for Location, Service, Guide, and Booking. Booking is
+ * mostly read-only (see the "Booking" section below) - the one exception
+ * is a brand-new booking with no _tc_service_id yet (an admin manually
+ * adding one via Bookings -> Add New), which gets an editable form
+ * instead. See render_booking()/save_new_booking().
  *
  * @package TC_Booking
  */
@@ -17,6 +21,7 @@ class TC_Meta_Boxes {
 		add_action( 'save_post_' . TC_CPT::SERVICE, array( __CLASS__, 'save_service' ) );
 		add_action( 'save_post_' . TC_CPT::GUIDE, array( __CLASS__, 'save_guide' ) );
 		add_action( 'save_post_' . TC_CPT::BOOKING, array( __CLASS__, 'save_booking_note' ) );
+		add_action( 'save_post_' . TC_CPT::BOOKING, array( __CLASS__, 'save_new_booking' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
 	}
 
@@ -387,10 +392,115 @@ class TC_Meta_Boxes {
 	}
 
 	/* ---------------------------------------------------------------- */
-	/* Booking (read-only)                                               */
+	/* Booking (read-only, except a brand-new one - see render_booking()) */
 	/* ---------------------------------------------------------------- */
 
+	/**
+	 * Form for an admin manually adding a booking (e.g. a phone booking) -
+	 * previously the Booking post type only supported a title, so "Add
+	 * New" gave an admin nowhere to actually enter booking details.
+	 *
+	 * Deliberately narrower than the customer-facing widget: no extras or
+	 * additional guests (an admin can note either in the note field below,
+	 * once the booking exists), and the guide is auto-assigned via
+	 * TC_Availability::pick_guide() rather than picked here, exactly like
+	 * the real booking flow - never fork that matching logic. Skips
+	 * WooCommerce/payment entirely and marks the booking 'confirmed'
+	 * directly (no confirmation email either) - the assumption is this
+	 * form is for a booking already arranged/paid outside the online flow;
+	 * see save_new_booking().
+	 */
+	private static function render_new_booking_form( $post ) {
+		wp_nonce_field( 'tc_save_new_booking', 'tc_new_booking_nonce' );
+
+		$error = get_transient( 'tc_new_booking_error_' . get_current_user_id() . '_' . $post->ID );
+		if ( $error ) {
+			delete_transient( 'tc_new_booking_error_' . get_current_user_id() . '_' . $post->ID );
+			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		}
+
+		$locations = get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+		$services  = get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+		?>
+		<table class="form-table">
+			<tr>
+				<th><label for="tc_new_location_id"><?php esc_html_e( 'Location', 'tc-booking' ); ?></label></th>
+				<td>
+					<select id="tc_new_location_id" name="tc_new_location_id" required>
+						<option value=""></option>
+						<?php foreach ( $locations as $location ) : ?>
+							<option value="<?php echo esc_attr( $location->ID ); ?>"><?php echo esc_html( $location->post_title ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_service_id"><?php esc_html_e( 'Service', 'tc-booking' ); ?></label></th>
+				<td>
+					<select id="tc_new_service_id" name="tc_new_service_id" required>
+						<option value=""></option>
+						<?php foreach ( $services as $service ) : ?>
+							<option value="<?php echo esc_attr( $service->ID ); ?>"><?php echo esc_html( $service->post_title ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<p class="description"><?php esc_html_e( 'Every service is listed here regardless of location - if this service isn\'t actually offered at the chosen location, saving will show an error rather than silently guessing.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_date"><?php esc_html_e( 'Date', 'tc-booking' ); ?></label></th>
+				<td><input type="date" id="tc_new_date" name="tc_new_date" required></td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_party_size"><?php esc_html_e( 'Group size', 'tc-booking' ); ?></label></th>
+				<td>
+					<input type="number" id="tc_new_party_size" name="tc_new_party_size" value="1" min="1" step="1" style="width:80px;">
+					<p class="description"><?php esc_html_e( 'Only relevant for a service with "bring anyone with you" enabled - ignored (treated as 1) otherwise.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_first_name"><?php esc_html_e( 'First name', 'tc-booking' ); ?></label></th>
+				<td><input type="text" id="tc_new_first_name" name="tc_new_first_name" class="regular-text" required></td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_last_name"><?php esc_html_e( 'Last name', 'tc-booking' ); ?></label></th>
+				<td><input type="text" id="tc_new_last_name" name="tc_new_last_name" class="regular-text" required></td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_email"><?php esc_html_e( 'Email', 'tc-booking' ); ?></label></th>
+				<td><input type="email" id="tc_new_email" name="tc_new_email" class="regular-text" required></td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_phone"><?php esc_html_e( 'Phone', 'tc-booking' ); ?></label></th>
+				<td><input type="text" id="tc_new_phone" name="tc_new_phone" class="regular-text"></td>
+			</tr>
+			<tr>
+				<th><label for="tc_new_total"><?php esc_html_e( 'Total price', 'tc-booking' ); ?></label></th>
+				<td>
+					<input type="number" id="tc_new_total" name="tc_new_total" step="0.01" min="0" placeholder="<?php esc_attr_e( 'Auto (service price × group size)', 'tc-booking' ); ?>">
+					<p class="description"><?php esc_html_e( 'Leave blank to use the service\'s own price. Set this to override it (e.g. a phone-arranged discount).', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+		</table>
+		<p class="description">
+			<?php esc_html_e( 'This creates a confirmed booking directly - no WooCommerce order and no confirmation email are sent, since this form is for a booking already arranged (and typically already paid) outside the online flow. A guide is assigned automatically, the same way an online booking picks one.', 'tc-booking' ); ?>
+		</p>
+		<?php
+	}
+
 	public static function render_booking( $post ) {
+		// A booking created through the customer-facing widget or the REST
+		// API always has a service attached from the moment it exists - the
+		// only way to see one without it is a fresh "Add New" booking an
+		// admin is creating by hand (e.g. a phone booking), which is what
+		// render_new_booking_form() is for. Once saved, this box always
+		// shows the read-only view below - see the note about Cancel/
+		// Reschedule at the bottom of this method for why editing an
+		// established booking isn't done here.
+		if ( ! (int) get_post_meta( $post->ID, '_tc_service_id', true ) ) {
+			self::render_new_booking_form( $post );
+			return;
+		}
+
 		$service_id  = (int) get_post_meta( $post->ID, '_tc_service_id', true );
 		$location_id = (int) get_post_meta( $post->ID, '_tc_location_id', true );
 		$guide_id    = (int) get_post_meta( $post->ID, '_tc_guide_id', true );
@@ -494,5 +604,110 @@ class TC_Meta_Boxes {
 		if ( isset( $_POST['tc_admin_note'] ) ) {
 			update_post_meta( $post_id, '_tc_admin_note', sanitize_textarea_field( wp_unslash( $_POST['tc_admin_note'] ) ) );
 		}
+	}
+
+	/**
+	 * Saves render_new_booking_form() above. Reuses
+	 * TC_Availability::is_bookable()/pick_guide() - the exact same
+	 * validation/guide-assignment the customer-facing REST endpoint uses
+	 * (TC_Rest_Api::create_booking()) - rather than a second, possibly-
+	 * divergent set of rules for the admin form. On any validation
+	 * failure, the booking meta is simply left unset: render_booking()'s
+	 * "does this booking have a service yet" check means the form just
+	 * reappears (with the error above it) for another attempt, no special
+	 * redirect handling needed.
+	 */
+	public static function save_new_booking( $post_id ) {
+		// Once a booking has a service, this method's job is done - further
+		// edits go through Cancel/Reschedule on the list screen instead
+		// (see the note at the end of render_booking()).
+		if ( (int) get_post_meta( $post_id, '_tc_service_id', true ) ) {
+			return;
+		}
+		if ( ! isset( $_POST['tc_new_booking_nonce'] ) || ! wp_verify_nonce( $_POST['tc_new_booking_nonce'], 'tc_save_new_booking' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+
+		$location_id = isset( $_POST['tc_new_location_id'] ) ? absint( $_POST['tc_new_location_id'] ) : 0;
+		$service_id  = isset( $_POST['tc_new_service_id'] ) ? absint( $_POST['tc_new_service_id'] ) : 0;
+		$date        = isset( $_POST['tc_new_date'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_date'] ) ) : '';
+		$first_name  = isset( $_POST['tc_new_first_name'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_first_name'] ) ) : '';
+		$last_name   = isset( $_POST['tc_new_last_name'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_last_name'] ) ) : '';
+		$email       = isset( $_POST['tc_new_email'] ) ? sanitize_email( wp_unslash( $_POST['tc_new_email'] ) ) : '';
+		$phone       = isset( $_POST['tc_new_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_phone'] ) ) : '';
+		$party_size  = isset( $_POST['tc_new_party_size'] ) ? max( 1, (int) $_POST['tc_new_party_size'] ) : 1;
+		$total_input = isset( $_POST['tc_new_total'] ) ? sanitize_text_field( wp_unslash( $_POST['tc_new_total'] ) ) : '';
+
+		// Nothing filled in at all (just a title typed and saved) - not an
+		// error, just don't turn this into a half-built booking.
+		if ( ! $location_id && ! $service_id && ! $date && ! $first_name && ! $email ) {
+			return;
+		}
+
+		if ( ! $location_id || ! $service_id || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || ! $first_name || ! is_email( $email ) ) {
+			self::new_booking_error( $post_id, __( 'Please fill in location, service, a valid date, first name, and a valid email.', 'tc-booking' ) );
+			return;
+		}
+
+		$service = TC_Availability::get_service_data( $service_id );
+		if ( ! $service ) {
+			self::new_booking_error( $post_id, __( 'Unknown service.', 'tc-booking' ) );
+			return;
+		}
+
+		$party_size = $service['allow_party'] ? min( $party_size, max( 1, (int) $service['max_capacity'] ) ) : 1;
+
+		if ( ! TC_Availability::is_bookable( $service_id, $location_id, $date ) ) {
+			self::new_booking_error( $post_id, __( 'That service isn\'t available at that location on that date.', 'tc-booking' ) );
+			return;
+		}
+		$guide_id = TC_Availability::pick_guide( $service_id, $location_id, $date, $party_size );
+		if ( ! $guide_id ) {
+			// pick_guide() can fail here even though is_bookable() passed -
+			// is_bookable() only checks "is anything open," not "is there
+			// room for this specific party size." Same caveat as
+			// TC_Admin_Bookings::handle_reschedule().
+			self::new_booking_error( $post_id, __( 'No guide has room for that group size on that date.', 'tc-booking' ) );
+			return;
+		}
+
+		$total = is_numeric( $total_input ) ? (float) $total_input : $service['price'] * ( $service['allow_party'] ? $party_size : 1 );
+
+		update_post_meta( $post_id, '_tc_service_id', $service_id );
+		update_post_meta( $post_id, '_tc_location_id', $location_id );
+		update_post_meta( $post_id, '_tc_guide_id', $guide_id );
+		update_post_meta( $post_id, '_tc_date', $date );
+		update_post_meta( $post_id, '_tc_status', 'confirmed' );
+		update_post_meta( $post_id, '_tc_party_size', $party_size );
+		update_post_meta( $post_id, '_tc_guests', array() );
+		update_post_meta( $post_id, '_tc_selected_extras', array() );
+		update_post_meta( $post_id, '_tc_customer_first_name', $first_name );
+		update_post_meta( $post_id, '_tc_customer_last_name', $last_name );
+		update_post_meta( $post_id, '_tc_customer_email', $email );
+		update_post_meta( $post_id, '_tc_customer_phone', $phone );
+		update_post_meta( $post_id, '_tc_total', $total );
+		// WPML support - see the matching comment in
+		// TC_Rest_Api::create_booking(); harmless/empty on a non-WPML site.
+		update_post_meta( $post_id, '_tc_customer_lang', TC_WPML::current_language() );
+
+		// The title typed on "Add New" was just a placeholder to get past
+		// WordPress's empty-title guard - replace it with a real one now
+		// that there's something to describe, matching create_booking()'s
+		// own title convention. Safe from infinite recursion: by the time
+		// this runs _tc_service_id is already set above, so the save_post
+		// this triggers hits this method's own early-return immediately.
+		wp_update_post(
+			array(
+				'ID'         => $post_id,
+				'post_title' => sprintf( '%s - %s - %s', $service['name'], $date, trim( $first_name . ' ' . $last_name ) ),
+			)
+		);
+	}
+
+	private static function new_booking_error( $post_id, $message ) {
+		set_transient( 'tc_new_booking_error_' . get_current_user_id() . '_' . $post_id, $message, 60 );
 	}
 }
