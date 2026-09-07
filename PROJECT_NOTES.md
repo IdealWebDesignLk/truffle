@@ -710,6 +710,44 @@ recursion despite firing `save_post_tc_booking` again immediately:
 `_tc_service_id` is already written to meta by that point, so the
 re-entrant call hits this method's own early-return guard right away.
 
+## Email notifications (`class-tc-notifications.php`)
+
+Three events - confirmation, cancellation, reschedule - each `wp_mail()`
+the customer, and (confirmation/cancellation only) a copy to the site's
+own `admin_email`. As of the guide-email addition below, the assigned
+guide also gets a copy for all three events, at the email address of the
+WP user account linked via `_tc_user_id` on their Guide post (same
+account they log into the guide dashboard with - `guide_email()`, `''`
+if no guide is assigned or that guide has no linked account, in which
+case that `wp_mail()` call is simply skipped).
+
+**Fixed a real bug while adding the guide email**: every `send_*()`
+method calls `TC_WPML::maybe_switch_language( $b['lang'] )` to build the
+*customer's* copy in the customer's own language (needed because these
+often fire from a later request with no language context of its own -
+see the WPML section above). The admin copy was previously built
+*after* that switch, with a comment claiming it "stays in whatever
+language was already active (normally Dutch)" - but the switch has no
+"undo," so the admin copy was actually ALSO rendering in the customer's
+language, contradicting that comment. Fixed by reordering: admin and
+guide copies are now built and sent *first* (while whatever language was
+already active for the request is still active), and the language switch
++ customer copy happen last. Worth remembering if a fourth "internal"
+recipient is ever added here: build and send anything that should NOT
+follow the customer *before* the `maybe_switch_language()` call, not
+after.
+
+The guide email is deliberately lighter than the admin copy - booking
+logistics (ceremony, location, date/time, customer name + phone, group
+size if more than 1) rather than price/payment details, which aren't the
+guide's concern.
+
+**Not sent from the manual admin "Add Booking" form**
+(`TC_Meta_Boxes::save_new_booking()`) - consistent with that form
+skipping the customer confirmation email too (see the section above);
+the assumption there is the booking was arranged directly, guide
+included.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
