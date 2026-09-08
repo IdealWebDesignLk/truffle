@@ -155,7 +155,10 @@ class TC_Woocommerce {
 				if ( '' === $row[1] ) {
 					continue;
 				}
-				echo esc_html( $row[0] ) . ': ' . esc_html( $row[1] ) . "\n";
+				// A blank label (extras_rows() follow-up rows) means "still
+				// part of the row above" - indent instead of printing a bare
+				// ": value" line.
+				echo '' === $row[0] ? '  ' . esc_html( $row[1] ) . "\n" : esc_html( $row[0] ) . ': ' . esc_html( $row[1] ) . "\n";
 			}
 			echo "\n";
 			return;

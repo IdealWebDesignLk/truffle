@@ -1044,6 +1044,20 @@ up "one extra per line" for free once extras became multiple rows there
 too. A booking with zero extras still renders exactly as before -
 `extras_rows()` returns `array()`, which `array_merge()`s in as a no-op.
 
+**Follow-up - "Extra" was repeating on every line.** That first version
+put the label `"Extra"` on every row, so three extras read as
+"Extra / Extra / Extra" down the left column - not what was asked for
+("no need to say extra multiple times, one title extra is enough, just
+list extra data one by one"). Changed so only the *first* row carries the
+label (now `"Extras"`, plural, since it's a heading for the group rather
+than a per-item label) - every row after gets `''`. `email_rows()` only
+skips a row on an empty *value*, so those follow-up rows still render,
+just with a blank first cell, reading as one heading with each extra
+listed underneath. The WooCommerce order-email plain-text branch needed a
+matching tweak - it built each line as `"label: value"`, which would've
+printed a bare `": Fotopakket ×1"` for a blank-label row, so a blank
+label there now prints as an indented continuation line instead.
+
 ## Guide calendar: dropped AJAX auto-save entirely, added explicit save
 
 Follow-up to the "sometimes it saves, sometimes it doesn't" section

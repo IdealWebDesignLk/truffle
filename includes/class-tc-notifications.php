@@ -306,10 +306,12 @@ class TC_Notifications {
 	 * One [label, value] pair per extra - so each ends up on its own row
 	 * via email_rows(), rather than one comma-joined "Label ×qty, Label
 	 * ×qty" row (extras used to be a single such string, which read as
-	 * one big blob when a booking had more than one). Every label is just
-	 * "Extra" - the value carries the actual name and quantity - so
-	 * several extras stack as a natural, repeated-label list rather than
-	 * needing a numbered heading per row.
+	 * one big blob when a booking had more than one). Only the first row
+	 * carries the "Extras" label - the rest use '' - so it reads as one
+	 * heading with each extra listed underneath, rather than "Extras"
+	 * repeated on every line. email_rows() only skips rows on an empty
+	 * *value*, so the blank-label follow-up rows still render (just with
+	 * an empty first cell).
 	 *
 	 * Public since TC_Woocommerce::add_booking_details_to_order_email()
 	 * reuses this too, rather than a second copy of this exact formatting
@@ -321,13 +323,15 @@ class TC_Notifications {
 		if ( ! is_array( $extras ) || ! $extras ) {
 			return array();
 		}
-		$rows = array();
+		$rows  = array();
+		$label = __( 'Extras', 'tc-booking' );
 		foreach ( $extras as $extra ) {
 			if ( empty( $extra['qty'] ) ) {
 				continue;
 			}
 			/* translators: 1: extra label, 2: quantity */
-			$rows[] = array( __( 'Extra', 'tc-booking' ), sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] ) );
+			$rows[] = array( $label, sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] ) );
+			$label  = '';
 		}
 		return $rows;
 	}
