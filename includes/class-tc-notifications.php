@@ -40,44 +40,43 @@ class TC_Notifications {
 		// switch has no "undo," so anything composed after it - including
 		// these internal copies - rendered in the CUSTOMER's language
 		// instead, contradicting the intent documented here.
-		$extras = self::extras_summary( $b['extras'] );
+		$extras = self::extras_rows( $b['extras'] );
 
 		$admin_subject = sprintf( __( 'Nieuwe boeking: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
-		$admin_body    = self::email_shell(
-			__( 'Nieuwe boeking bevestigd', 'tc-booking' ),
-			self::email_rows(
-				array(
-					array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
-					array( __( 'E-mail', 'tc-booking' ), $b['email'] ),
-					array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
-					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
-					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
-					array( __( 'Extras', 'tc-booking' ), $extras ),
-					array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ),
-				)
-			)
+		$admin_rows    = array_merge(
+			array(
+				array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
+				array( __( 'E-mail', 'tc-booking' ), $b['email'] ),
+				array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
+				array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+				array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+				array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+				array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
+			),
+			$extras,
+			array( array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ) )
 		);
+		$admin_body    = self::email_shell( __( 'Nieuwe boeking bevestigd', 'tc-booking' ), self::email_rows( $admin_rows ) );
 		self::send_html_mail( self::admin_email(), $admin_subject, $admin_body );
 
 		if ( $b['guide_email'] ) {
 			$guide_subject = sprintf( __( 'Nieuwe boeking toegewezen: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
+			$guide_rows    = array_merge(
+				array(
+					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
+					array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
+					array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
+					array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
+				),
+				$extras
+			);
 			$guide_body    = self::email_shell(
 				__( 'Nieuwe boeking toegewezen', 'tc-booking' ),
 				self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['guide_name'] ) ) .
 				self::email_p( __( 'Er is een nieuwe boeking aan je toegewezen.', 'tc-booking' ) ) .
-				self::email_rows(
-					array(
-						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-						array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
-						array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
-						array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
-						array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
-						array( __( 'Extras', 'tc-booking' ), $extras ),
-					)
-				)
+				self::email_rows( $guide_rows )
 			);
 			self::send_html_mail( $b['guide_email'], $guide_subject, $guide_body );
 		}
@@ -118,25 +117,26 @@ class TC_Notifications {
 		if ( ! $b ) {
 			return;
 		}
-		$extras = self::extras_summary( $b['extras'] );
+		$extras = self::extras_rows( $b['extras'] );
 
 		// Guide copy first, same reasoning as send_confirmation() above -
 		// stays in whatever language is already active, doesn't follow the
 		// customer.
 		if ( $b['guide_email'] ) {
 			$guide_subject = sprintf( __( 'Boeking geannuleerd: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
+			$guide_rows    = array_merge(
+				array(
+					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+				),
+				$extras
+			);
 			$guide_body    = self::email_shell(
 				__( 'Boeking geannuleerd', 'tc-booking' ),
 				self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['guide_name'] ) ) .
 				self::email_p( __( 'De volgende boeking is geannuleerd en staat niet langer in je agenda.', 'tc-booking' ) ) .
-				self::email_rows(
-					array(
-						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-						array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
-						array( __( 'Extras', 'tc-booking' ), $extras ),
-					)
-				)
+				self::email_rows( $guide_rows )
 			);
 			self::send_html_mail( $b['guide_email'], $guide_subject, $guide_body );
 		}
@@ -147,17 +147,18 @@ class TC_Notifications {
 		TC_WPML::maybe_switch_language( $b['lang'] );
 
 		$subject = sprintf( __( 'Boeking geannuleerd: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
+		$rows    = array_merge(
+			array(
+				array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+				array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+			),
+			$extras
+		);
 		$body    = self::email_shell(
 			__( 'Je boeking is geannuleerd', 'tc-booking' ),
 			self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['first_name'] ) ) .
 			self::email_p( __( 'Je boeking is geannuleerd. Als dit onverwacht is, neem dan contact met ons op.', 'tc-booking' ) ) .
-			self::email_rows(
-				array(
-					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
-					array( __( 'Extras', 'tc-booking' ), $extras ),
-				)
-			)
+			self::email_rows( $rows )
 		);
 		// Same body sent to both the customer and admin, exactly as before
 		// this email was restyled - not worth two near-identical templates
@@ -172,23 +173,24 @@ class TC_Notifications {
 		if ( ! $b ) {
 			return;
 		}
-		$extras = self::extras_summary( $b['extras'] );
+		$extras = self::extras_rows( $b['extras'] );
 
 		// Guide copy first, same reasoning as send_confirmation() above.
 		if ( $b['guide_email'] ) {
 			$guide_subject = sprintf( __( 'Boeking verzet: %s', 'tc-booking' ), $b['service_name'] );
+			$guide_rows    = array_merge(
+				array(
+					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+					array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+				),
+				$extras
+			);
 			$guide_body    = self::email_shell(
 				__( 'Boeking verzet', 'tc-booking' ),
 				self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['guide_name'] ) ) .
 				self::email_p( __( 'Een boeking in je agenda is verzet naar een nieuwe datum.', 'tc-booking' ) ) .
-				self::email_rows(
-					array(
-						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-						array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
-						array( __( 'Extras', 'tc-booking' ), $extras ),
-					)
-				)
+				self::email_rows( $guide_rows )
 			);
 			self::send_html_mail( $b['guide_email'], $guide_subject, $guide_body );
 		}
@@ -197,18 +199,19 @@ class TC_Notifications {
 		TC_WPML::maybe_switch_language( $b['lang'] );
 
 		$subject = sprintf( __( 'Boeking verzet: %s', 'tc-booking' ), $b['service_name'] );
+		$rows    = array_merge(
+			array(
+				array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+				array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+				array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+			),
+			$extras
+		);
 		$body    = self::email_shell(
 			__( 'Je boeking is verzet', 'tc-booking' ),
 			self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['first_name'] ) ) .
 			self::email_p( __( 'Je boeking is verplaatst naar een nieuwe datum.', 'tc-booking' ) ) .
-			self::email_rows(
-				array(
-					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-					array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
-					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
-					array( __( 'Extras', 'tc-booking' ), $extras ),
-				)
-			)
+			self::email_rows( $rows )
 		);
 		self::send_html_mail( $b['email'], $subject, $body );
 	}
@@ -300,29 +303,33 @@ class TC_Notifications {
 	}
 
 	/**
-	 * "Label ×qty, Label ×qty" - the extras rows every email above builds
-	 * with this (a booking's extras were entirely missing from every
-	 * email, customer/admin/guide alike, until this was added). '' if
-	 * there aren't any, which email_rows() already skips rather than
-	 * showing an empty "Extras" row.
+	 * One [label, value] pair per extra - so each ends up on its own row
+	 * via email_rows(), rather than one comma-joined "Label ×qty, Label
+	 * ×qty" row (extras used to be a single such string, which read as
+	 * one big blob when a booking had more than one). Every label is just
+	 * "Extra" - the value carries the actual name and quantity - so
+	 * several extras stack as a natural, repeated-label list rather than
+	 * needing a numbered heading per row.
 	 *
 	 * Public since TC_Woocommerce::add_booking_details_to_order_email()
 	 * reuses this too, rather than a second copy of this exact formatting
-	 * living in that file.
+	 * living in that file. Returns array() if there aren't any, which
+	 * array_merge()s in as a no-op wherever this is spliced into a rows
+	 * array.
 	 */
-	public static function extras_summary( $extras ) {
+	public static function extras_rows( $extras ) {
 		if ( ! is_array( $extras ) || ! $extras ) {
-			return '';
+			return array();
 		}
-		$parts = array();
+		$rows = array();
 		foreach ( $extras as $extra ) {
 			if ( empty( $extra['qty'] ) ) {
 				continue;
 			}
 			/* translators: 1: extra label, 2: quantity */
-			$parts[] = sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] );
+			$rows[] = array( __( 'Extra', 'tc-booking' ), sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] ) );
 		}
-		return implode( ', ', $parts );
+		return $rows;
 	}
 
 	/**

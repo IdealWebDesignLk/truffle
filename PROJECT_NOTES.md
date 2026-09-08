@@ -1025,6 +1025,25 @@ guarantee the exact "31 oktober 2026" shape asked for, regardless of
 whatever the site's own Settings -> General date format happens to be
 set to.
 
+**Follow-up - extras were all crammed onto one line.** `extras_summary()`
+formatted every extra into a single comma-joined string ("Maaltijd ×3,
+Fotopakket ×1") shown as one "Extras" row - fine for one extra, unreadable
+for several, per "we need one extra per line." Couldn't just insert
+`<br>` into that string, since `email_rows()` runs every value through
+`esc_html()` (it would come out as literal `&lt;br&gt;` text, not a line
+break). Replaced `extras_summary()` with `extras_rows()`, returning one
+`[ 'Extra', 'Label ×qty' ]` pair per extra instead of one joined string -
+each pair becomes its own table row once spliced (via `array_merge()`)
+into the row list every email already builds, so several extras now stack
+as repeated "Extra" rows rather than one wide blob. Applied to all three
+`TC_Notifications` email types (customer/admin/guide copies alike) and to
+`TC_Woocommerce::add_booking_details_to_order_email()`'s "Boekingsgegevens"
+block on the WooCommerce order email - its plain-text branch already
+looped over the same `$rows` array printing one line per row, so it picked
+up "one extra per line" for free once extras became multiple rows there
+too. A booking with zero extras still renders exactly as before -
+`extras_rows()` returns `array()`, which `array_merge()`s in as a no-op.
+
 ## Guide calendar: dropped AJAX auto-save entirely, added explicit save
 
 Follow-up to the "sometimes it saves, sometimes it doesn't" section

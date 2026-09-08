@@ -128,7 +128,7 @@ class TC_Woocommerce {
 			return;
 		}
 
-		$extras_summary = TC_Notifications::extras_summary( $b['extras'] );
+		$extras_rows = TC_Notifications::extras_rows( $b['extras'] );
 
 		$guests_summary = '';
 		if ( is_array( $b['guests'] ) && $b['guests'] ) {
@@ -138,13 +138,15 @@ class TC_Woocommerce {
 			$guests_summary = implode( ', ', $names );
 		}
 
-		$rows = array(
-			array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-			array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
-			array( __( 'Datum', 'tc-booking' ), date_i18n( get_option( 'date_format' ), strtotime( $b['date'] ) ) ),
-			array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
-			array( __( 'Extra gasten', 'tc-booking' ), $guests_summary ),
-			array( __( 'Extras', 'tc-booking' ), $extras_summary ),
+		$rows = array_merge(
+			array(
+				array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+				array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+				array( __( 'Datum', 'tc-booking' ), date_i18n( get_option( 'date_format' ), strtotime( $b['date'] ) ) ),
+				array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
+				array( __( 'Extra gasten', 'tc-booking' ), $guests_summary ),
+			),
+			$extras_rows
 		);
 
 		if ( $plain_text ) {
