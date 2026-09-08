@@ -128,18 +128,7 @@ class TC_Woocommerce {
 			return;
 		}
 
-		$extras_summary = '';
-		if ( is_array( $b['extras'] ) && $b['extras'] ) {
-			$parts = array();
-			foreach ( $b['extras'] as $extra ) {
-				if ( empty( $extra['qty'] ) ) {
-					continue;
-				}
-				/* translators: 1: extra label, 2: quantity */
-				$parts[] = sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] );
-			}
-			$extras_summary = implode( ', ', $parts );
-		}
+		$extras_summary = TC_Notifications::extras_summary( $b['extras'] );
 
 		$guests_summary = '';
 		if ( is_array( $b['guests'] ) && $b['guests'] ) {

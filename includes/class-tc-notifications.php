@@ -40,6 +40,8 @@ class TC_Notifications {
 		// switch has no "undo," so anything composed after it - including
 		// these internal copies - rendered in the CUSTOMER's language
 		// instead, contradicting the intent documented here.
+		$extras = self::extras_summary( $b['extras'] );
+
 		$admin_subject = sprintf( __( 'Nieuwe boeking: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
 		$admin_body    = self::email_shell(
 			__( 'Nieuwe boeking bevestigd', 'tc-booking' ),
@@ -52,6 +54,7 @@ class TC_Notifications {
 					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
 					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
 					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
+					array( __( 'Extras', 'tc-booking' ), $extras ),
 					array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ),
 				)
 			)
@@ -72,6 +75,7 @@ class TC_Notifications {
 						array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
 						array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
 						array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
+						array( __( 'Extras', 'tc-booking' ), $extras ),
 					)
 				)
 			);
@@ -100,6 +104,8 @@ class TC_Notifications {
 					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
 					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
 					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
+					array( __( 'Extras', 'tc-booking' ), $extras ),
+					array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ),
 				)
 			) .
 			self::email_p( __( 'We kijken ernaar uit je te zien.', 'tc-booking' ) )
@@ -108,10 +114,11 @@ class TC_Notifications {
 	}
 
 	public static function send_cancellation( $booking_id ) {
-		$b = self::booking_context( $booking_id );
+		$b      = self::booking_context( $booking_id );
 		if ( ! $b ) {
 			return;
 		}
+		$extras = self::extras_summary( $b['extras'] );
 
 		// Guide copy first, same reasoning as send_confirmation() above -
 		// stays in whatever language is already active, doesn't follow the
@@ -127,6 +134,7 @@ class TC_Notifications {
 						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
 						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
 						array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+						array( __( 'Extras', 'tc-booking' ), $extras ),
 					)
 				)
 			);
@@ -147,6 +155,7 @@ class TC_Notifications {
 				array(
 					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
 					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+					array( __( 'Extras', 'tc-booking' ), $extras ),
 				)
 			)
 		);
@@ -159,10 +168,11 @@ class TC_Notifications {
 	}
 
 	public static function send_reschedule( $booking_id ) {
-		$b = self::booking_context( $booking_id );
+		$b      = self::booking_context( $booking_id );
 		if ( ! $b ) {
 			return;
 		}
+		$extras = self::extras_summary( $b['extras'] );
 
 		// Guide copy first, same reasoning as send_confirmation() above.
 		if ( $b['guide_email'] ) {
@@ -176,6 +186,7 @@ class TC_Notifications {
 						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
 						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
 						array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
+						array( __( 'Extras', 'tc-booking' ), $extras ),
 					)
 				)
 			);
@@ -195,6 +206,7 @@ class TC_Notifications {
 					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
 					array( __( 'Nieuwe datum', 'tc-booking' ), self::format_date( $b['date'] ) ),
 					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+					array( __( 'Extras', 'tc-booking' ), $extras ),
 				)
 			)
 		);
@@ -288,6 +300,32 @@ class TC_Notifications {
 	}
 
 	/**
+	 * "Label ×qty, Label ×qty" - the extras rows every email above builds
+	 * with this (a booking's extras were entirely missing from every
+	 * email, customer/admin/guide alike, until this was added). '' if
+	 * there aren't any, which email_rows() already skips rather than
+	 * showing an empty "Extras" row.
+	 *
+	 * Public since TC_Woocommerce::add_booking_details_to_order_email()
+	 * reuses this too, rather than a second copy of this exact formatting
+	 * living in that file.
+	 */
+	public static function extras_summary( $extras ) {
+		if ( ! is_array( $extras ) || ! $extras ) {
+			return '';
+		}
+		$parts = array();
+		foreach ( $extras as $extra ) {
+			if ( empty( $extra['qty'] ) ) {
+				continue;
+			}
+			/* translators: 1: extra label, 2: quantity */
+			$parts[] = sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] );
+		}
+		return implode( ', ', $parts );
+	}
+
+	/**
 	 * Wraps wp_mail() with the wp_mail_content_type filter scoped to just
 	 * this one call (added immediately before, removed immediately after)
 	 * rather than switching it globally - other code on the site calling
@@ -327,7 +365,7 @@ class TC_Notifications {
 		// sequence) showed up as mangled bytes ("â‚¬").
 		return '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#F1EEF7;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">' .
 			'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1EEF7;padding:32px 16px;"><tr><td align="center">' .
-			'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">' .
+			'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;">' .
 			'<tr><td style="background:#4B2E7D;border-radius:12px 12px 0 0;padding:20px 28px;">' .
 			'<span style="color:#ffffff;font-size:18px;font-weight:600;">' . esc_html( $site_name ) . '</span>' .
 			'</td></tr>' .

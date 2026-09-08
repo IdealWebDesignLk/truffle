@@ -943,6 +943,28 @@ directly. The email HTML itself was rendered in a browser (not just
 validated as well-formed) specifically to catch the charset bug above,
 which no amount of code-reading would have surfaced.
 
+**Follow-up - extras were missing from every one of `TC_Notifications`'s
+own emails.** `booking_context()` had fetched `_tc_selected_extras` from
+the start (added for the WooCommerce order-email work above), but
+nothing in `send_confirmation()`/`send_cancellation()`/
+`send_reschedule()` actually rendered it - a real gap, not a rendering
+bug, reported as "customer, staff, or admin don't get info about
+extras." `extras_summary()` (the "label ×qty, label ×qty" formatting
+that lived only in `TC_Woocommerce::add_booking_details_to_order_email()`
+before this) moved to `TC_Notifications` and was made `public` so both
+classes share the one implementation, and an "Extras" row (using it) was
+added to all three email types' customer/admin/guide copies -
+`email_rows()` already skips a row with an empty value, so a booking
+with no extras renders exactly as before, no blank "Extras" line. The
+customer's confirmation email also gained a "Totaal" row it was
+previously missing (noticed while adding extras there - showing what was
+added without also showing the resulting total read as incomplete).
+
+Also widened `email_shell()`'s content table from `560px` to `680px` (a
+separate part of the same request) - re-verified in a rendered preview
+that the wider layout, the new Extras row, and the € symbol (the
+earlier charset fix) all still render correctly together.
+
 ## Guide calendar: dropped AJAX auto-save entirely, added explicit save
 
 Follow-up to the "sometimes it saves, sometimes it doesn't" section
