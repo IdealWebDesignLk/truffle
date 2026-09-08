@@ -44,9 +44,14 @@
 			body: JSON.stringify( body ),
 		} ).then( handleResponse );
 	}
+	// See the matching comment in public/js/guide-dashboard.js's
+	// handleResponse() - a stale REST nonce surfaces as 403.
 	function handleResponse( res ) {
 		return res.json().then( function ( data ) {
 			if ( ! res.ok ) {
+				if ( 403 === res.status ) {
+					throw new Error( 'Your session has expired - please reload the page and try again.' );
+				}
 				throw new Error( ( data && data.message ) || 'Something went wrong.' );
 			}
 			return data;

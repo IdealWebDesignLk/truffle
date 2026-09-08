@@ -49,9 +49,21 @@
 			body: JSON.stringify( body ),
 		} ).then( handleResponse );
 	}
+	// 403 here almost always means the REST nonce baked into this page at
+	// load time (window.tcGuideDashboard.nonce) has gone stale - either the
+	// page itself has just been sitting open long enough for WordPress's
+	// nonce to rotate past its ~24h window, or (more likely, and worth
+	// checking if saves are unreliable specifically on this front-end page
+	// but not the admin one, which is never cached) a caching plugin/CDN is
+	// serving a cached copy of this page with an old nonce baked into it.
+	// Surfaced as its own message rather than the generic fallback so it's
+	// obvious what to actually do about it.
 	function handleResponse( res ) {
 		return res.json().then( function ( data ) {
 			if ( ! res.ok ) {
+				if ( 403 === res.status ) {
+					throw new Error( 'Your session has expired - please reload the page and try again.' );
+				}
 				throw new Error( ( data && data.message ) || 'Something went wrong.' );
 			}
 			return data;
