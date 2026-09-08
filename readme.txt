@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.30.2
+Stable tag: 0.30.3
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,13 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.30.3 =
+* Fixed the ceremony date showing in raw "2026-10-31" format on
+  WooCommerce order line items (cart, checkout, order emails, the admin
+  order screen - anywhere the order's fee line is shown) - now reads
+  "31 oktober 2026", matching how dates are already shown everywhere
+  else in the booking flow.
 
 = 0.30.2 =
 * Found and fixed the actual cause of "the guide calendar says saved

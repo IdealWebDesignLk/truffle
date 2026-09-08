@@ -188,6 +188,18 @@ class TC_Woocommerce {
 		// "Bring anyone with you" (GitHub issue #6): base price is only
 		// multiplied for services that opt into it - see the matching
 		// comment in TC_Rest_Api::create_booking().
+		//
+		// $date itself stays the raw 'Y-m-d' from _tc_date (nothing else in
+		// this function needs a display version) - $date_display is only
+		// for the fee line's own name below, which is what actually shows
+		// on every WooCommerce order screen/email (cart, checkout, "New
+		// order", order-received, ...). Reported as showing a raw
+		// "2026-10-31" there - confusing for a Dutch audience expecting
+		// day-month-year with a spelled-out month, not the other way
+		// around. 'j F Y' (not get_option('date_format')) to guarantee
+		// that exact "31 oktober 2026" shape regardless of whatever the
+		// site's own Settings -> General date format happens to be set to.
+		$date_display      = date_i18n( 'j F Y', strtotime( $date ) );
 		$party_multiplier = $service['allow_party'] ? $party_size : 1;
 		$fee_label         = ( $service['allow_party'] && $party_size > 1 )
 			? sprintf(
@@ -201,10 +213,10 @@ class TC_Woocommerce {
 				/* translators: 1: service name, 2: date, 3: number of people */
 				__( '%1$s (%2$s) × %3$d personen', 'tc-booking' ),
 				$service['name'],
-				$date,
+				$date_display,
 				$party_size
 			)
-			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date );
+			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date_display );
 
 		self::add_fee_line( $order, $fee_label, $service['price'] * $party_multiplier );
 

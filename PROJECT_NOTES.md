@@ -1009,6 +1009,22 @@ separate part of the same request) - re-verified in a rendered preview
 that the wider layout, the new Extras row, and the € symbol (the
 earlier charset fix) all still render correctly together.
 
+**Follow-up - the ceremony date itself was still raw ISO** ("2026-10-31")
+on the actual WooCommerce order line item (the fee's own name/label,
+built in `TC_Woocommerce::create_order_for_booking()`) - a different,
+earlier gap than the missing-extras one above, and one that shows up
+everywhere an order's line items do: cart, checkout, every order email,
+the admin order screen. Reported directly from a real order confirmation
+email. Fixed by formatting a separate `$date_display` (`date_i18n( 'j F
+Y', strtotime( $date ) )`) for the fee label only - `$date` itself stays
+the raw `'Y-m-d'` from `_tc_date`, nothing else in that function needs a
+display version. Hardcoded `'j F Y'` rather than `get_option(
+'date_format' )` (used elsewhere in this same file for the checkout-page
+summary and the "Boekingsgegevens" order-email addition) specifically to
+guarantee the exact "31 oktober 2026" shape asked for, regardless of
+whatever the site's own Settings -> General date format happens to be
+set to.
+
 ## Guide calendar: dropped AJAX auto-save entirely, added explicit save
 
 Follow-up to the "sometimes it saves, sometimes it doesn't" section
