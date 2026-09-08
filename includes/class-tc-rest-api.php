@@ -136,30 +136,43 @@ class TC_Rest_Api {
 					'callback'            => array( __CLASS__, 'guide_get_availability' ),
 					'permission_callback' => array( __CLASS__, 'require_guide' ),
 				),
-				array(
-					'methods'             => 'POST',
-					'callback'            => array( __CLASS__, 'guide_set_availability' ),
-					'permission_callback' => array( __CLASS__, 'require_guide' ),
-				),
 			)
 		);
 
-		// --- Admin: edit a guide's calendar on their behalf ------------
+		// GitHub feedback - the calendar previously auto-saved one date per
+		// tap via /guide/availability POST above; now the guide stages
+		// changes locally and an explicit Save button submits them all
+		// together - see public/js/guide-dashboard.js.
+		register_rest_route(
+			self::NAMESPACE_,
+			'/guide/availability/bulk',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'guide_save_availability_bulk' ),
+				'permission_callback' => array( __CLASS__, 'require_guide' ),
+			)
+		);
+
+		// --- Admin: view a guide's calendar on their behalf ------------
+		// GitHub feedback - this used to also have a POST route saving one
+		// date per tap via AJAX, same as the guide's own calendar above,
+		// but an admin edits a guide's calendar from inside the Guide post
+		// edit screen, where "click Update to save" is already the
+		// expected mental model for every other field on that screen
+		// (Locations covered, Services provided, ...) - a separate AJAX
+		// auto-save sitting inside that same form, with its own separate
+		// notion of "saved," was confusing rather than convenient. The
+		// calendar's changes are now submitted as part of that same form
+		// and saved in TC_Meta_Boxes::save_guide() - see
+		// admin/js/guide-availability.js and that method.
 
 		register_rest_route(
 			self::NAMESPACE_,
 			'/admin/guides/(?P<id>\d+)/availability',
 			array(
-				array(
-					'methods'             => 'GET',
-					'callback'            => array( __CLASS__, 'admin_get_guide_availability' ),
-					'permission_callback' => array( __CLASS__, 'require_manage_bookings' ),
-				),
-				array(
-					'methods'             => 'POST',
-					'callback'            => array( __CLASS__, 'admin_set_guide_availability' ),
-					'permission_callback' => array( __CLASS__, 'require_manage_bookings' ),
-				),
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'admin_get_guide_availability' ),
+				'permission_callback' => array( __CLASS__, 'require_manage_bookings' ),
 			)
 		);
 	}
@@ -736,34 +749,52 @@ class TC_Rest_Api {
 
 		return rest_ensure_response(
 			array(
-				'availability' => self::fetch_guide_availability( $guide->ID, $start, $end ),
-				'bookings'      => self::fetch_guide_bookings( $guide->ID, $start, $end ),
+				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $start, $end ),
+				'bookings'      => TC_Availability::fetch_guide_bookings( $guide->ID, $start, $end ),
 			)
 		);
 	}
 
-	public static function guide_set_availability( WP_REST_Request $request ) {
-		$guide  = self::get_guide_post_for_current_user();
-		$params = $request->get_json_params();
+	/**
+	 * GitHub feedback - previously one date saved per tap (AJAX auto-save);
+	 * the guide now stages every change locally and this one request
+	 * applies them all together when they click Save (see
+	 * public/js/guide-dashboard.js). $params['changes'] is an array of
+	 * {date, status}. Each entry is validated and applied independently
+	 * (one date already booked by the time Save is clicked - e.g. an admin
+	 * booked it in the meantime - doesn't block the rest from saving), and
+	 * the per-date result is returned so the client can revert only the
+	 * ones that actually failed rather than the whole batch.
+	 */
+	public static function guide_save_availability_bulk( WP_REST_Request $request ) {
+		$guide   = self::get_guide_post_for_current_user();
+		$params  = $request->get_json_params();
+		$changes = isset( $params['changes'] ) && is_array( $params['changes'] ) ? $params['changes'] : array();
 
-		$date   = self::sanitize_date( $params['date'] ?? '' );
-		$status = isset( $params['status'] ) && in_array( $params['status'], array( 'blocked', 'available' ), true ) ? $params['status'] : '';
-		$note   = isset( $params['note'] ) ? sanitize_text_field( $params['note'] ) : null;
+		$results = array();
+		foreach ( $changes as $change ) {
+			$date   = self::sanitize_date( $change['date'] ?? '' );
+			$status = isset( $change['status'] ) && in_array( $change['status'], array( 'blocked', 'available' ), true ) ? $change['status'] : '';
 
-		if ( ! $date || ! $status ) {
-			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
+			if ( ! $date || ! $status ) {
+				$results[] = array( 'date' => $change['date'] ?? '', 'success' => false, 'message' => __( 'Ongeldige datum of status.', 'tc-booking' ) );
+				continue;
+			}
+			if ( 'blocked' === $status && TC_Availability::guide_has_booking_on( $guide->ID, $date ) ) {
+				$results[] = array( 'date' => $date, 'success' => false, 'message' => __( 'Er is al een boeking op deze datum - deze kan niet als vrije dag worden gemarkeerd.', 'tc-booking' ) );
+				continue;
+			}
+
+			TC_Availability::upsert_guide_availability( $guide->ID, $date, $status );
+			$results[] = array( 'date' => $date, 'success' => true );
 		}
-		if ( 'blocked' === $status && self::guide_has_booking_on( $guide->ID, $date ) ) {
-			return new WP_Error( 'tc_has_booking', __( 'Er is al een boeking op deze datum - deze kan niet als vrije dag worden gemarkeerd.', 'tc-booking' ), array( 'status' => 409 ) );
-		}
 
-		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
-
-		return rest_ensure_response( array( 'success' => true ) );
+		return rest_ensure_response( array( 'results' => $results ) );
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Admin: edit a guide's calendar on their behalf                       */
+	/* Admin: view a guide's calendar on their behalf - saving happens via */
+	/* the Guide post's own Update button, see TC_Meta_Boxes::save_guide()  */
 	/* ------------------------------------------------------------------ */
 
 	public static function admin_get_guide_availability( WP_REST_Request $request ) {
@@ -778,37 +809,10 @@ class TC_Rest_Api {
 
 		return rest_ensure_response(
 			array(
-				'availability' => self::fetch_guide_availability( $guide->ID, $start, $end ),
-				'bookings'      => self::fetch_guide_bookings( $guide->ID, $start, $end ),
+				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $start, $end ),
+				'bookings'      => TC_Availability::fetch_guide_bookings( $guide->ID, $start, $end ),
 			)
 		);
-	}
-
-	public static function admin_set_guide_availability( WP_REST_Request $request ) {
-		$guide = self::get_guide_post_for_admin_request( $request );
-		if ( is_wp_error( $guide ) ) {
-			return $guide;
-		}
-
-		$params = $request->get_json_params();
-		$date   = self::sanitize_date( $params['date'] ?? '' );
-		$status = isset( $params['status'] ) && in_array( $params['status'], array( 'blocked', 'available' ), true ) ? $params['status'] : '';
-		$note   = isset( $params['note'] ) ? sanitize_text_field( $params['note'] ) : null;
-
-		if ( ! $date || ! $status ) {
-			return new WP_Error( 'tc_invalid_input', __( 'Invalid date or status.', 'tc-booking' ), array( 'status' => 400 ) );
-		}
-		// wp-admin-facing, so English (unlike guide_set_availability()'s
-		// front-end/guide-facing version of this same check) - see the
-		// WPML support notes on why this plugin's admin screens stay
-		// English while front-end/guide text is written in Dutch.
-		if ( 'blocked' === $status && self::guide_has_booking_on( $guide->ID, $date ) ) {
-			return new WP_Error( 'tc_has_booking', __( 'This guide already has a booking on that date - it cannot be marked as a day off.', 'tc-booking' ), array( 'status' => 409 ) );
-		}
-
-		self::upsert_guide_availability( $guide->ID, $date, $status, $note );
-
-		return rest_ensure_response( array( 'success' => true ) );
 	}
 
 	private static function get_guide_post_for_admin_request( WP_REST_Request $request ) {
@@ -818,128 +822,6 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_not_found', __( 'Guide not found.', 'tc-booking' ), array( 'status' => 404 ) );
 		}
 		return $guide;
-	}
-
-	/**
-	 * Shared read/write helpers for the wp_tc_guide_availability table, used
-	 * by both the guide's own self-service endpoints and the admin endpoints
-	 * that edit a guide's calendar on their behalf - same data, same rules,
-	 * just a different permission check and a guide_id supplied explicitly
-	 * instead of resolved from the current user.
-	 */
-	private static function fetch_guide_availability( $guide_id, $start, $end ) {
-		global $wpdb;
-		$table = $wpdb->prefix . 'tc_guide_availability';
-		$rows  = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT availability_date, status, note FROM {$table} WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
-				$guide_id,
-				$start,
-				$end
-			)
-		);
-
-		$data = array();
-		foreach ( $rows as $row ) {
-			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
-		}
-		return $data;
-	}
-
-	/**
-	 * This guide's actual bookings within the range, grouped by date, so
-	 * the calendar (public/js/guide-dashboard.js and its admin-editing
-	 * counterpart, admin/js/guide-availability.js) can show what's already
-	 * booked instead of just the manually-set blocked/available exceptions
-	 * from fetch_guide_availability() above - and so guide_set_availability()
-	 * /admin_set_guide_availability() can refuse to mark an already-booked
-	 * date as a day off, which would leave a real booking sitting on a date
-	 * the calendar claims is free.
-	 *
-	 * p.post_status = 'publish' and excluding _tc_status = 'cancelled'
-	 * mirrors TC_Availability::guide_available_on()'s own booking query
-	 * exactly (see GitHub issue #70's fix there) - a trashed or cancelled
-	 * booking must not show as "booked" here either.
-	 */
-	private static function fetch_guide_bookings( $guide_id, $start, $end ) {
-		global $wpdb;
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT pm_date.meta_value AS booking_date, pm_service.meta_value AS service_id,
-				        pm_fname.meta_value AS first_name, pm_lname.meta_value AS last_name
-				 FROM {$wpdb->posts} p
-				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
-				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
-				 INNER JOIN {$wpdb->postmeta} pm_service ON pm_service.post_id = p.ID AND pm_service.meta_key = '_tc_service_id'
-				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
-				 LEFT JOIN {$wpdb->postmeta} pm_fname ON pm_fname.post_id = p.ID AND pm_fname.meta_key = '_tc_customer_first_name'
-				 LEFT JOIN {$wpdb->postmeta} pm_lname ON pm_lname.post_id = p.ID AND pm_lname.meta_key = '_tc_customer_last_name'
-				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
-				   AND pm_date.meta_value BETWEEN %s AND %s AND pm_status.meta_value != 'cancelled'",
-				TC_CPT::BOOKING,
-				$guide_id,
-				$start,
-				$end
-			)
-		);
-
-		$by_date = array();
-		foreach ( $rows as $row ) {
-			if ( ! isset( $by_date[ $row->booking_date ] ) ) {
-				$by_date[ $row->booking_date ] = array();
-			}
-			$by_date[ $row->booking_date ][] = trim(
-				get_the_title( (int) $row->service_id ) . ' — ' . trim( $row->first_name . ' ' . $row->last_name )
-			);
-		}
-
-		$data = array();
-		foreach ( $by_date as $date => $summaries ) {
-			$data[] = array( 'date' => $date, 'summary' => implode( '; ', $summaries ) );
-		}
-		return $data;
-	}
-
-	/** Used by guide_set_availability()/admin_set_guide_availability() to refuse marking an already-booked date as a day off. */
-	private static function guide_has_booking_on( $guide_id, $date ) {
-		global $wpdb;
-		$count = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->posts} p
-				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
-				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
-				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
-				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
-				   AND pm_date.meta_value = %s AND pm_status.meta_value != 'cancelled'",
-				TC_CPT::BOOKING,
-				$guide_id,
-				$date
-			)
-		);
-		return $count > 0;
-	}
-
-	private static function upsert_guide_availability( $guide_id, $date, $status, $note ) {
-		global $wpdb;
-		$table = $wpdb->prefix . 'tc_guide_availability';
-		$now   = current_time( 'mysql' );
-
-		$wpdb->query(
-			$wpdb->prepare(
-				"INSERT INTO {$table} (guide_id, availability_date, status, note, created_at, updated_at)
-				 VALUES (%d, %s, %s, %s, %s, %s)
-				 ON DUPLICATE KEY UPDATE status = %s, note = %s, updated_at = %s",
-				$guide_id,
-				$date,
-				$status,
-				$note,
-				$now,
-				$now,
-				$status,
-				$note,
-				$now
-			)
-		);
 	}
 
 	/* ------------------------------------------------------------------ */

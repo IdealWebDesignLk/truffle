@@ -2,12 +2,27 @@
  * TC Booking admin - guide availability calendar (Guide edit screen).
  *
  * Same calendar UI/markup/CSS as public/js/guide-dashboard.js (the guide's
- * own self-service page), but talks to the admin-only REST routes and
+ * own self-service page), but talks to the admin-only GET route and
  * operates on the guide ID baked into this edit screen instead of resolving
  * "the guide" from the currently logged-in user - so an admin can manage any
  * guide's calendar without logging in as them. Booked-date handling (shown
  * amber with a tooltip, not clickable, past dates hidden) mirrors that file
  * exactly - see its top-of-file comment for the full reasoning.
+ *
+ * GitHub feedback - this used to auto-save one date per tap via AJAX to a
+ * separate admin-only POST route, which turned out confusing: everything
+ * else on this same Guide edit screen (Locations covered, Services
+ * provided, the linked user account, ...) only saves when the admin clicks
+ * the post editor's own Update button, so a calendar with its own separate
+ * "saved" notion sitting right there in the same form was a mismatch, not
+ * a convenience. Toggling a date now only stages a local change
+ * (state.dirty, same concept and persistence-across-months as the
+ * front-end file); on every render, that staged state is written out as
+ * hidden <input name="tc_availability[DATE]"> fields inside this meta
+ * box - which is itself inside the post edit screen's own <form> - so it
+ * submits and saves automatically as part of the normal Update, read and
+ * applied in TC_Meta_Boxes::save_guide(). No REST write route for this
+ * exists anymore.
  */
 ( function () {
 	'use strict';
@@ -25,33 +40,19 @@
 
 	var state = {
 		monthOffset: 0,
-		availability: {}, // date -> 'blocked' | 'available'
+		availability: {}, // date -> 'blocked' | 'available', as loaded from the server
+		dirty: {}, // date -> 'blocked' | 'available', staged - submitted with the post form's own Update
 		bookings: {}, // date -> summary string, for dates with a real booking
 		loading: true,
 		error: null,
-		pending: {}, // date -> true while a save request for that date is in flight
-		status: null, // 'saving' | 'saved' | null - small status message near the description
 	};
-	var savedTimer = null;
 
 	function apiGet( path ) {
 		return fetch( API_ROOT + path, { headers: { 'X-WP-Nonce': NONCE } } ).then( handleResponse );
 	}
-	function apiPost( path, body ) {
-		return fetch( API_ROOT + path, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-			body: JSON.stringify( body ),
-		} ).then( handleResponse );
-	}
-	// See the matching comment in public/js/guide-dashboard.js's
-	// handleResponse() - a stale REST nonce surfaces as 403.
 	function handleResponse( res ) {
 		return res.json().then( function ( data ) {
 			if ( ! res.ok ) {
-				if ( 403 === res.status ) {
-					throw new Error( 'Your session has expired - please reload the page and try again.' );
-				}
 				throw new Error( ( data && data.message ) || 'Something went wrong.' );
 			}
 			return data;
@@ -103,15 +104,17 @@
 		return { first: first, last: last };
 	}
 
+	function dirtyCount() {
+		return Object.keys( state.dirty ).length;
+	}
+
 	function loadMonth() {
 		state.loading = true;
 		render();
 		var bounds = monthBounds( state.monthOffset );
 		apiGet( BASE + '?start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
 			.then( function ( data ) {
-				state.availability = {};
 				( data.availability || [] ).forEach( function ( r ) { state.availability[ r.date ] = r.status; } );
-				state.bookings = {};
 				( data.bookings || [] ).forEach( function ( r ) { state.bookings[ r.date ] = r.summary; } );
 				state.loading = false;
 				render();
@@ -123,45 +126,18 @@
 			} );
 	}
 
-	// See the matching comment in public/js/guide-dashboard.js's
-	// toggleDate() - same "sometimes it saves, sometimes it doesn't" fix:
-	// revert to the previous value on a failed save instead of leaving an
-	// optimistic guess on screen, and ignore a repeat click on a date
-	// that's still saving so two overlapping requests for the same date
-	// can't race each other.
+	// Stages a local change only - nothing is sent to the server here, see
+	// this file's top-of-file comment. Toggling a date back to its
+	// last-loaded value un-stages it entirely.
 	function toggleDate( iso, currentlyBlocked ) {
-		if ( state.pending[ iso ] ) {
-			return;
-		}
 		var newStatus = currentlyBlocked ? 'available' : 'blocked';
-		var previous  = state.availability[ iso ];
-		state.availability[ iso ] = newStatus; // optimistic
-		state.pending[ iso ] = true;
-		state.status = 'saving';
-		state.error  = null;
-		clearTimeout( savedTimer );
+		var saved     = state.availability[ iso ] || 'available';
+		if ( newStatus === saved ) {
+			delete state.dirty[ iso ];
+		} else {
+			state.dirty[ iso ] = newStatus;
+		}
 		render();
-		apiPost( BASE, { date: iso, status: newStatus } )
-			.then( function () {
-				delete state.pending[ iso ];
-				state.status = 'saved';
-				render();
-				savedTimer = setTimeout( function () {
-					state.status = null;
-					render();
-				}, 2000 );
-			} )
-			.catch( function ( err ) {
-				if ( previous ) {
-					state.availability[ iso ] = previous;
-				} else {
-					delete state.availability[ iso ];
-				}
-				delete state.pending[ iso ];
-				state.status = null;
-				state.error  = err.message;
-				render();
-			} );
 	}
 
 	function render() {
@@ -178,32 +154,32 @@
 		for ( var d = 1; d <= daysInMo; d++ ) {
 			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
 			var iso     = isoDate( dateObj );
-			var status  = state.availability[ iso ] || 'available';
+			var isDirty = Object.prototype.hasOwnProperty.call( state.dirty, iso );
+			var status  = isDirty ? state.dirty[ iso ] : ( state.availability[ iso ] || 'available' );
 			var booking = state.bookings[ iso ];
 			var isPast  = dateObj < today;
-			var pending = !! state.pending[ iso ];
 			var cls = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
-			if ( pending ) {
-				cls += ' pending';
+			if ( isDirty ) {
+				cls += ' dirty';
 			}
-			var attrs = ( isPast || booking || pending ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
+			var attrs = ( isPast || booking ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
 			if ( booking && ! isPast ) {
 				attrs += ' title="' + escapeAttr( booking ) + '"';
+			} else if ( isDirty ) {
+				attrs += ' title="' + escapeAttr( 'Not saved yet - click Update to save' ) + '"';
 			}
 			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
-		var statusHtml = '';
-		if ( 'saving' === state.status ) {
-			statusHtml = '<div class="tc-cal-status saving" aria-live="polite">Saving…</div>';
-		} else if ( 'saved' === state.status ) {
-			statusHtml = '<div class="tc-cal-status saved" aria-live="polite">✓ Saved</div>';
-		}
+		var dirty      = dirtyCount();
+		var hiddenInputs = Object.keys( state.dirty ).map( function ( date ) {
+			return '<input type="hidden" name="tc_availability[' + escapeAttr( date ) + ']" value="' + escapeAttr( state.dirty[ date ] ) + '">';
+		} ).join( '' );
 
 		root.innerHTML = '<div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
-			'<p class="tc-sub">Tap a date to toggle it between available and a day off, on this guide’s behalf. Booked dates (hover for details) can’t be changed here.</p>' +
-			statusHtml +
+			'<p class="tc-sub">Tap a date to toggle it between available and a day off, on this guide’s behalf - changes save when you click Update below, same as the rest of this screen. Booked dates (hover for details) can’t be changed here.</p>' +
+			( dirty ? '<div class="tc-cal-status saving" style="position:static;display:inline-block;">' + escapeHtml( dirty + ( 1 === dirty ? ' change' : ' changes' ) + ' will be saved when you click Update' ) + '</div>' : '' ) +
 			'<div class="tc-grid-nav"><button id="tc-admin-prev-month" type="button">←</button><span class="range">' + monthName + '</span><button id="tc-admin-next-month" type="button">→</button></div>' +
 			( state.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +
@@ -212,7 +188,7 @@
 			'<span><span class="tc-swatch" style="background:var(--available)"></span>Available</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>Day off</span>' +
 			'<span><span class="tc-swatch" style="background:var(--limited)"></span>Booked</span>' +
-			'</div></div>';
+			'</div>' + hiddenInputs + '</div>';
 
 		var prev = document.getElementById( 'tc-admin-prev-month' );
 		if ( prev ) prev.onclick = function () { state.monthOffset -= 1; loadMonth(); };

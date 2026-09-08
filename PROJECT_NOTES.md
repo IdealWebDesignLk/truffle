@@ -943,6 +943,101 @@ directly. The email HTML itself was rendered in a browser (not just
 validated as well-formed) specifically to catch the charset bug above,
 which no amount of code-reading would have surfaced.
 
+## Guide calendar: dropped AJAX auto-save entirely, added explicit save
+
+Follow-up to the "sometimes it saves, sometimes it doesn't" section
+above - that fix (revert-on-failure, a pending lock, a visible status
+message) turned out not to be enough. Reported directly: on the
+**admin** guide-calendar screen specifically, a toggle would show
+"Saved" yet not actually be reflected until the admin also clicked the
+Guide post's own Update button - i.e. the AJAX save and the post's own
+save were somehow landing in a state where only the latter "really"
+counted from the admin's perspective. Rather than chase that further,
+the decision was to drop AJAX-per-tap saving entirely on both screens
+and replace it with an explicit, staged-changes model - matching how
+every *other* field on the Guide edit screen already behaves (Locations
+covered, Services provided, the linked user account: all just sit there
+until Update is clicked), and giving the front-end guide dashboard its
+own equivalent explicit Save button since it has no surrounding "Update"
+to piggyback on.
+
+**Shared DB helpers moved from `TC_Rest_Api` to `TC_Availability`**
+(`fetch_guide_availability()`, `fetch_guide_bookings()`,
+`guide_has_booking_on()`, `upsert_guide_availability()`, all now
+`public static`) - both `TC_Rest_Api` (the front-end's bulk-save REST
+endpoint) and `TC_Meta_Boxes` (the admin's save-on-Update handler) need
+them now, and `TC_Meta_Boxes` (meta-box/admin-UI code) calling into
+`TC_Rest_Api` (a REST-routing class) for shared business logic would
+have been a backwards, confusing dependency. `TC_Availability` is
+already this plugin's stated single choke-point for availability/
+booking logic (see this file's own warning about `get_guides_for()`
+near the top), so this is where they belonged all along.
+
+**Front-end** (`public/js/guide-dashboard.js`): `toggleDate()` no longer
+calls the API at all - it only updates `state.dirty` (a `{date: status}`
+map, separate from `state.availability`, the last-confirmed-saved
+value). `state.dirty` deliberately persists across month navigation
+(`loadMonth()` only ever merges fresh server data into
+`state.availability`, never touches `state.dirty`), so a change staged
+in one month survives browsing to another and back before Save is
+clicked - `render()`'s per-cell status resolves as `dirty[iso] ||
+availability[iso] || 'available'`. A new **Save** button (disabled when
+nothing is staged) posts every staged change together to a new bulk
+endpoint, `POST /guide/availability/bulk` (`TC_Rest_Api::
+guide_save_availability_bulk()` - the old single-date `POST
+/guide/availability` route is gone). Each date in the batch is validated
+and applied *independently* server-side, so one date that became booked
+between page load and clicking Save (someone else booked it in the
+meantime) doesn't block the rest of the batch - only that date reverts,
+with its specific reason shown, while everything else that succeeded
+commits. The whole grid locks (no `data-date` on any cell) while a save
+request is in flight, replacing the earlier per-date `pending` lock -
+there's only ever one request in flight at a time now, covering
+everything staged, so a global lock is simpler and equally correct. A
+staged-but-unsaved cell shows a dashed outline (`.tc-cal-day.dirty` in
+`booking-app.css` - the old, now-unused `.tc-cal-day.pending` rule was
+removed) and a "Not saved yet" tooltip. A `beforeunload` handler warns
+before leaving the page with anything still staged.
+
+**Admin** (`admin/js/guide-availability.js` +
+`TC_Meta_Boxes::save_guide()`): same `state.dirty` staging concept, but
+with *no* REST write call anywhere - `admin_set_guide_availability()`
+and its whole POST route are gone, `admin_get_guide_availability()`
+(read-only) is all that's left. Every render, the staged changes are
+written out as hidden `<input name="tc_availability[DATE]" value="...">`
+fields directly inside `#tc-guide-availability-root` - which is itself
+inside the Guide post edit screen's own `<form>` (guaranteed by how
+WordPress renders `normal`/`side` context meta boxes), so these fields
+submit automatically with the rest of the form when Update is clicked,
+no JS submit-hook needed. `TC_Meta_Boxes::save_guide_availability_
+changes()` (called from the existing `save_guide()`, already hooked to
+`save_post_tc_guide`) reads `$_POST['tc_availability']` and applies each
+entry with the *exact same* validation as the front-end's bulk endpoint
+(`TC_Availability::guide_has_booking_on()`) - never a forked copy of
+that rule. A `save_post` hook can't cleanly redirect with a query-arg
+notice (see `save_new_booking()`'s docblock above for why), so a
+booking-conflict failure here uses the same short-lived-transient +
+inline-notice pattern that method already established:
+`render_guide_availability()` now checks for and displays one at the
+top of the meta box.
+
+Verified end-to-end in a browser for both screens (mocked REST
+responses, a real `<form>` for the admin case): confirmed toggling a
+date fires **zero** network requests on either screen until told to
+save; the front-end's Save button posts exactly one bulk request
+containing every staged change; a per-date failure in that response
+reverts only that one date (with its message shown) while a
+simultaneously-succeeding date correctly commits; and - the part
+specific to the admin fix - that the hidden `tc_availability[...]`
+inputs actually appear in `FormData` built from the surrounding `<form>`
+when its submit button is clicked, confirming they'd genuinely reach
+`save_guide()` on a real Update click, not just visually resemble form
+fields. Also verified the `TC_Meta_Boxes::save_guide_availability_
+changes()` validation logic standalone: a booking-conflict date is
+rejected and recorded as an error rather than silently dropped, an
+invalid date/status pair is silently skipped, and a request with no
+`tc_availability` field at all is a clean no-op.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

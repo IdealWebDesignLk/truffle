@@ -380,4 +380,130 @@ class TC_Availability {
 			'extras'             => is_array( $extras ) ? $extras : array(),
 		);
 	}
+
+	/* ------------------------------------------------------------------ */
+	/* A guide's own wp_tc_guide_availability exceptions + real bookings.   */
+	/* Moved here from TC_Rest_Api (were private helpers on that class) so */
+	/* TC_Meta_Boxes could reuse them too, once GitHub feedback moved the   */
+	/* admin-side save off AJAX and onto the Guide post's own save_post -   */
+	/* meta-box code depending on REST-class internals would have been a   */
+	/* backwards, confusing dependency. This class is already this         */
+	/* plugin's single choke-point for availability/booking logic          */
+	/* (see this file's own top-of-file warning), so these belong here.    */
+	/* ------------------------------------------------------------------ */
+
+	public static function fetch_guide_availability( $guide_id, $start, $end ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'tc_guide_availability';
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT availability_date, status, note FROM {$table} WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
+				$guide_id,
+				$start,
+				$end
+			)
+		);
+
+		$data = array();
+		foreach ( $rows as $row ) {
+			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
+		}
+		return $data;
+	}
+
+	/**
+	 * This guide's actual bookings within the range, grouped by date, so
+	 * the calendar (public/js/guide-dashboard.js and its admin-editing
+	 * counterpart, admin/js/guide-availability.js) can show what's already
+	 * booked instead of just the manually-set blocked/available exceptions
+	 * from fetch_guide_availability() above - and so upsert is refused for
+	 * an already-booked date (guide_has_booking_on() below), which would
+	 * otherwise leave a real booking sitting on a date the calendar claims
+	 * is free.
+	 *
+	 * p.post_status = 'publish' and excluding _tc_status = 'cancelled'
+	 * mirrors guide_available_on()'s own booking query above exactly (see
+	 * GitHub issue #70's fix there) - a trashed or cancelled booking must
+	 * not show as "booked" here either.
+	 */
+	public static function fetch_guide_bookings( $guide_id, $start, $end ) {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT pm_date.meta_value AS booking_date, pm_service.meta_value AS service_id,
+				        pm_fname.meta_value AS first_name, pm_lname.meta_value AS last_name
+				 FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
+				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
+				 INNER JOIN {$wpdb->postmeta} pm_service ON pm_service.post_id = p.ID AND pm_service.meta_key = '_tc_service_id'
+				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
+				 LEFT JOIN {$wpdb->postmeta} pm_fname ON pm_fname.post_id = p.ID AND pm_fname.meta_key = '_tc_customer_first_name'
+				 LEFT JOIN {$wpdb->postmeta} pm_lname ON pm_lname.post_id = p.ID AND pm_lname.meta_key = '_tc_customer_last_name'
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
+				   AND pm_date.meta_value BETWEEN %s AND %s AND pm_status.meta_value != 'cancelled'",
+				TC_CPT::BOOKING,
+				$guide_id,
+				$start,
+				$end
+			)
+		);
+
+		$by_date = array();
+		foreach ( $rows as $row ) {
+			if ( ! isset( $by_date[ $row->booking_date ] ) ) {
+				$by_date[ $row->booking_date ] = array();
+			}
+			$by_date[ $row->booking_date ][] = trim(
+				get_the_title( (int) $row->service_id ) . ' — ' . trim( $row->first_name . ' ' . $row->last_name )
+			);
+		}
+
+		$data = array();
+		foreach ( $by_date as $date => $summaries ) {
+			$data[] = array( 'date' => $date, 'summary' => implode( '; ', $summaries ) );
+		}
+		return $data;
+	}
+
+	/** Refuses to let a date already carrying an active booking for this guide be marked as a day off. */
+	public static function guide_has_booking_on( $guide_id, $date ) {
+		global $wpdb;
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
+				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
+				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
+				   AND pm_date.meta_value = %s AND pm_status.meta_value != 'cancelled'",
+				TC_CPT::BOOKING,
+				$guide_id,
+				$date
+			)
+		);
+		return $count > 0;
+	}
+
+	public static function upsert_guide_availability( $guide_id, $date, $status, $note = null ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'tc_guide_availability';
+		$now   = current_time( 'mysql' );
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$table} (guide_id, availability_date, status, note, created_at, updated_at)
+				 VALUES (%d, %s, %s, %s, %s, %s)
+				 ON DUPLICATE KEY UPDATE status = %s, note = %s, updated_at = %s",
+				$guide_id,
+				$date,
+				$status,
+				$note,
+				$now,
+				$now,
+				$status,
+				$note,
+				$now
+			)
+		);
+	}
 }

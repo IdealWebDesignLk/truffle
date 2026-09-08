@@ -358,10 +358,12 @@
 .tc-cal-day.booked { cursor: default; }
 .tc-cal-day.past { visibility: hidden; }
 .tc-cal-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; font-weight: 700; }
-/* A date whose save request is still in flight (guide-dashboard.js /
-   guide-availability.js's toggleDate()) - also not clickable, same as a
-   booked or past date, while its own request is pending. */
-.tc-cal-day.pending { opacity: .5; cursor: default; }
+/* A date toggled but not yet saved (guide-dashboard.js's/
+   guide-availability.js's state.dirty) - staged locally, only committed
+   when the guide clicks Save (front-end) or the admin clicks the post
+   editor's own Update button (admin). Dashed rather than .selected's
+   solid outline specifically to read as "pending," not "chosen." */
+.tc-cal-day.dirty { outline: 2px dashed var(--brand); outline-offset: 2px; font-weight: 700; }
 
 /* Small "Saving…" / "✓ Saved" status pill shown near the calendar's own
    title/description while a toggleDate() request is in flight or just

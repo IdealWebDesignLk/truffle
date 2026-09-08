@@ -411,6 +411,12 @@ class TC_Meta_Boxes {
 			echo '<p>' . esc_html__( 'Save this guide first, then come back here to manage their availability calendar.', 'tc-booking' ) . '</p>';
 			return;
 		}
+		$error_key = 'tc_guide_availability_error_' . get_current_user_id() . '_' . $post->ID;
+		$error     = get_transient( $error_key );
+		if ( $error ) {
+			delete_transient( $error_key );
+			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		}
 		echo '<div id="tc-guide-availability-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
 	}
 
@@ -449,6 +455,53 @@ class TC_Meta_Boxes {
 		$service_ids = isset( $_POST['tc_service_ids'] ) ? array_map( 'absint', (array) $_POST['tc_service_ids'] ) : array();
 		foreach ( $service_ids as $service_id ) {
 			add_post_meta( $post_id, '_tc_service_ids', TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE ) );
+		}
+
+		self::save_guide_availability_changes( $post_id );
+	}
+
+	/**
+	 * GitHub feedback - the calendar in render_guide_availability() below
+	 * used to auto-save one date per tap via a separate AJAX request; it
+	 * now stages changes as hidden tc_availability[DATE]=STATUS fields
+	 * (admin/js/guide-availability.js) that submit with the rest of this
+	 * form, applied here alongside the other fields above - "click Update
+	 * to save" is already the mental model for everything else on this
+	 * screen, so the calendar having its own separate save mechanism was a
+	 * mismatch. Re-validated here exactly like the REST bulk-save endpoint
+	 * for the guide's own dashboard does (TC_Rest_Api::
+	 * guide_save_availability_bulk()) - never trust the client's staged
+	 * status alone, a date can become booked between page load and
+	 * clicking Update.
+	 */
+	private static function save_guide_availability_changes( $post_id ) {
+		$changes = isset( $_POST['tc_availability'] ) && is_array( $_POST['tc_availability'] ) ? wp_unslash( $_POST['tc_availability'] ) : array();
+		if ( ! $changes ) {
+			return;
+		}
+
+		$errors = array();
+		foreach ( $changes as $date => $status ) {
+			$date   = sanitize_text_field( $date );
+			$status = in_array( $status, array( 'blocked', 'available' ), true ) ? $status : '';
+			if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || ! $status ) {
+				continue;
+			}
+			if ( 'blocked' === $status && TC_Availability::guide_has_booking_on( $post_id, $date ) ) {
+				/* translators: %s: date (YYYY-MM-DD) */
+				$errors[] = sprintf( __( '%s already has a booking and could not be marked as a day off.', 'tc-booking' ), $date );
+				continue;
+			}
+			TC_Availability::upsert_guide_availability( $post_id, $date, $status );
+		}
+
+		if ( $errors ) {
+			// Shown inline the next time render_guide_availability() runs -
+			// same transient + inline-notice pattern as
+			// render_new_booking_form()'s error handling above, for the
+			// same reason: a save_post hook isn't a good place to redirect
+			// from (see that method's docblock).
+			set_transient( 'tc_guide_availability_error_' . get_current_user_id() . '_' . $post_id, implode( ' ', $errors ), 60 );
 		}
 	}
 
