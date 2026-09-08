@@ -367,9 +367,26 @@
    title/description while a toggleDate() request is in flight or just
    finished - see the "sometimes it saves, sometimes it doesn't" fix in
    both calendar JS files' toggleDate(). */
-.tc-cal-status { display: inline-block; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 20px; margin-bottom: 12px; }
+/* Fixed to the viewport, not the card - the calendar is tall enough
+   (several rows, plus the legend below it) that an in-flow message up
+   near the title needed scrolling back up to see once a guide had
+   scrolled down to reach a later week, defeating the point of it. */
+.tc-cal-status {
+	position: fixed;
+	bottom: 24px;
+	right: 24px;
+	z-index: 100150; /* above the wp-admin bar (99999) and the reschedule modal overlay (100100) */
+	font-size: 13px;
+	font-weight: 600;
+	padding: 9px 16px;
+	border-radius: 20px;
+	box-shadow: 0 4px 16px rgba(35, 31, 46, .18);
+}
 .tc-cal-status.saving { background: var(--brand-bg); color: var(--brand-deep); }
 .tc-cal-status.saved { background: var(--available-bg); color: var(--available); }
+@media (max-width: 600px) {
+	.tc-cal-status { left: 16px; right: 16px; bottom: 16px; text-align: center; }
+}
 
 /* Front-end guide dashboard only (not the admin edit-a-guide's-calendar
    screen, which lives inside wp-admin's own page chrome) - vertical
