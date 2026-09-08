@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.28.3
+Stable tag: 0.29.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,18 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.29.0 =
+* Every booking email (confirmation, cancellation, reschedule - the
+  customer, admin, and guide copies of each) is now a properly styled,
+  branded HTML email instead of plain text - a clean layout with the
+  booking's details in a readable table, matching the site's own purple
+  branding.
+* WooCommerce's own "New order" admin email now also shows the full
+  booking context (location, guide, date, group size, additional
+  guests, extras) - previously it only showed whatever the line item's
+  name happened to say, with no way to see the rest of the booking
+  without opening it separately.
 
 = 0.28.3 =
 * The "Saving…" / "Saved" message on the guide calendar (both the guide

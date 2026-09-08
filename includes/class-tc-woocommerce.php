@@ -26,6 +26,11 @@ class TC_Woocommerce {
 		// then redirected to for payment - see render_booking_summary().
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_pay_page_assets' ) );
 		add_action( 'before_woocommerce_pay', array( __CLASS__, 'render_booking_summary' ) );
+		// Follow-up request - the same booking details weren't in
+		// WooCommerce's own "New order" admin email either, only the fee
+		// line item's (fairly compressed) name/price - see
+		// add_booking_details_to_order_email().
+		add_action( 'woocommerce_email_order_details', array( __CLASS__, 'add_booking_details_to_order_email' ), 5, 4 );
 	}
 
 	/**
@@ -89,6 +94,84 @@ class TC_Woocommerce {
 		echo '<div class="tc-rline total"><span class="l">' . esc_html__( 'Totaal', 'tc-booking' ) . '</span><span class="r">&euro;' .
 			esc_html( number_format_i18n( (float) $b['total'], 2 ) ) . '</span></div>';
 		echo '</div></div>';
+	}
+
+	/**
+	 * Follow-up to GitHub issue #69 - the booking's fuller context
+	 * (location, guide, group size, extras, additional guests) wasn't in
+	 * WooCommerce's own "New order" admin email either, only the fee line
+	 * item(s)' name/price already on the order (a service line reading
+	 * something like "Zonsopgang ceremonie (2026-09-03) × 3 personen", plus
+	 * one line per extra) and whatever billing fields WooCommerce shows by
+	 * default (name/email/phone, from set_billing_*() in
+	 * create_order_for_booking()). Hooked at priority 5 so this appears
+	 * BEFORE WooCommerce's own order-items table (the default priority-10
+	 * hooks that render it), reading top-to-bottom as "here's the booking,
+	 * here's what's on it" rather than the reverse.
+	 *
+	 * Scoped to the "New order" email specifically ($email->id check) -
+	 * not every WooCommerce email this fires on (cancelled/failed/refunded
+	 * order emails trigger this same action too), matching what was
+	 * actually asked for; extending to other emails is a one-line change
+	 * to that check if wanted later.
+	 */
+	public static function add_booking_details_to_order_email( $order, $sent_to_admin, $plain_text, $email ) {
+		if ( ! $email || 'new_order' !== $email->id ) {
+			return;
+		}
+		$booking_id = (int) $order->get_meta( '_tc_booking_id' );
+		if ( ! $booking_id ) {
+			return; // Not a TC Booking order.
+		}
+		$b = TC_Notifications::booking_context( $booking_id );
+		if ( ! $b ) {
+			return;
+		}
+
+		$extras_summary = '';
+		if ( is_array( $b['extras'] ) && $b['extras'] ) {
+			$parts = array();
+			foreach ( $b['extras'] as $extra ) {
+				if ( empty( $extra['qty'] ) ) {
+					continue;
+				}
+				/* translators: 1: extra label, 2: quantity */
+				$parts[] = sprintf( __( '%1$s ×%2$d', 'tc-booking' ), $extra['label'], $extra['qty'] );
+			}
+			$extras_summary = implode( ', ', $parts );
+		}
+
+		$guests_summary = '';
+		if ( is_array( $b['guests'] ) && $b['guests'] ) {
+			$names = array_filter( array_map( function ( $guest ) {
+				return $guest['name'] ?? '';
+			}, $b['guests'] ) );
+			$guests_summary = implode( ', ', $names );
+		}
+
+		$rows = array(
+			array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+			array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+			array( __( 'Datum', 'tc-booking' ), date_i18n( get_option( 'date_format' ), strtotime( $b['date'] ) ) ),
+			array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
+			array( __( 'Extra gasten', 'tc-booking' ), $guests_summary ),
+			array( __( 'Extras', 'tc-booking' ), $extras_summary ),
+		);
+
+		if ( $plain_text ) {
+			echo esc_html__( 'Boekingsgegevens', 'tc-booking' ) . "\n";
+			foreach ( $rows as $row ) {
+				if ( '' === $row[1] ) {
+					continue;
+				}
+				echo esc_html( $row[0] ) . ': ' . esc_html( $row[1] ) . "\n";
+			}
+			echo "\n";
+			return;
+		}
+
+		echo '<h2 style="margin:24px 0 8px;font-size:16px;color:#231F2E;">' . esc_html__( 'Boekingsgegevens', 'tc-booking' ) . '</h2>';
+		echo TC_Notifications::email_rows( $rows ); // phpcs:ignore -- already-escaped HTML, matching how WooCommerce's own order-details table is echoed unescaped here too.
 	}
 
 	/**

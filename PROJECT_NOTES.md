@@ -853,6 +853,96 @@ sticking on the optimistic guess, and that three rapid clicks on the
 same date produce only two actual requests (the pending lock correctly
 swallowing the click that landed while the first was still in flight).
 
+**Live-site follow-up**: the fix above didn't fully resolve it - saves
+were still unreliable specifically on the front-end guide dashboard, not
+the admin equivalent, and the "Saving…" message wasn't showing at all.
+Traced to a caching plugin caching the guide dashboard page itself - a
+page carrying a personalized WordPress REST nonce (baked in at render
+time via `wp_localize_script`) should never be page-cached, since (a) a
+cached copy keeps serving an aging nonce past WordPress's ~24h rotation
+window, causing saves to start failing with no warning once it expires,
+and (b) the visitor was looking at whatever JS version was cached from
+before this plugin was last updated - explaining why the admin screen
+(never cached) worked fine while the front-end one didn't. Site-side fix
+(excluding the page from caching) is outside this repo; two things did
+still change here:
+- `handleResponse()` in both calendar JS files now recognizes a 403
+  specifically and shows "Your session has expired - please reload the
+  page and try again" instead of the generic fallback - a stale nonce is
+  by far the most likely cause of a 403 here, so this is worth having
+  regardless of whether page caching turns out to be the whole story.
+- `.tc-cal-status` (the "Saving…"/"Saved" message) is now `position:
+  fixed` in the corner of the screen rather than sitting inline near the
+  title - on a tall calendar, scrolled down to a later week, the inline
+  version needed scrolling back up to see, which was raised separately
+  once the message was actually visible again after a hard refresh.
+
+## Booking emails are now styled HTML, and appear on WooCommerce's own "New order" email
+
+Every `wp_mail()` this plugin sends (`TC_Notifications`'s confirmation/
+cancellation/reschedule emails - customer, admin, and guide copies) was
+plain text, built with `sprintf()` and literal `\n`s. Reported as "very
+basic," with a request to also surface booking details on WooCommerce's
+own "New order" admin email (previously that email only showed whatever
+the fee line item's name happened to say, e.g. "Zonsopgang ceremonie
+(2026-09-03) × 3 personen" - no location/guide/extras/guest breakdown).
+
+**HTML email shell** (`TC_Notifications::email_shell()`/`email_p()`/
+`email_rows()`, all at the bottom of that file): a small, deliberately
+plain, table-based layout with inline styles only - no `<style>` block,
+no external stylesheet or image, since both are liable to be stripped or
+blocked by a real-world mail client. Colors are the literal hex values
+from this plugin's own brand palette (`public/css/booking-app.css`'s
+`--brand-deep` `#4B2E7D` etc.) rather than shared at runtime - HTML email
+can't reliably use CSS custom properties across clients, so there was
+nothing to gain by trying to keep one source of truth for both. Every
+`send_*()` method's plain-text `sprintf()` calls were replaced with calls
+into these three helpers instead. `wp_mail()`'s content type is switched
+to `text/html` via the `wp_mail_content_type` filter, added and removed
+around each individual call (`send_html_mail()`) rather than switched
+globally, so nothing else on the site calling `wp_mail()` for something
+unrelated is affected.
+
+**A real bug found via a rendered preview, not just reading the code**:
+without an explicit `<meta charset="utf-8">` in the email's own `<head>`,
+"€" (a multi-byte UTF-8 sequence) rendered as mangled bytes ("â‚¬") in a
+browser preview of the generated HTML - `wp_mail()`'s own Content-Type
+header already declares UTF-8 correctly, but some mail clients render
+from the HTML's own declared charset regardless of the transport header
+and get it wrong without one. Fixed by adding the meta tag; this is
+exactly the kind of bug that a plain `php -l` check or a logic-only test
+can't catch, only an actual rendered look at the output - which is why
+one was worth doing here specifically.
+
+**WooCommerce's "New order" email** (`TC_Woocommerce::
+add_booking_details_to_order_email()`, hooked to
+`woocommerce_email_order_details` at priority 5, so it renders BEFORE
+WooCommerce's own order-items table at the default priority 10 - reads
+top-to-bottom as "here's the booking, here's what's on it," not the
+reverse): adds a "Boekingsgegevens" section with Location, Guide, Date,
+Group size, additional guests (names only), and Extras (as a
+"label ×qty" list) - everything the fee line items and default billing
+fields don't already show. Reuses `TC_Notifications::email_rows()`
+directly (made `public` for this) rather than a second, likely-to-drift
+copy of that table markup in this file. Scoped to the "New order" email
+specifically via `$email->id` (WooCommerce fires this same action for
+cancelled/failed/refunded order emails too) and to only orders carrying
+`_tc_booking_id` (so it can never appear on an unrelated WooCommerce
+order, if this site ever has one) - extending to other order emails
+later is a one-line change to that `$email->id` check. Handles both
+WooCommerce's HTML and plain-text email formats, matching how WooCommerce
+itself supports both.
+
+Verified with standalone PHP tests: the extras-summary building (label
+×qty, skipping a zero-quantity extra) and guests-summary building
+(names only, blank entries filtered) both checked against realistic
+data: end-to-end control flow (skip on a non-"new_order" email, skip on
+an order with no `_tc_booking_id`, skip on a `null` `$email` without a
+fatal, render the "Boekingsgegevens" heading otherwise) exercised
+directly. The email HTML itself was rendered in a browser (not just
+validated as well-formed) specifically to catch the charset bug above,
+which no amount of code-reading would have surfaced.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
