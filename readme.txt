@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.28.0
+Stable tag: 0.28.1
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,22 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.28.1 =
+* Fixed "sometimes it saves, sometimes it doesn't" on the guide
+  availability calendar (both the guide's own dashboard and the admin
+  screen for editing a guide's calendar on their behalf). A failed save
+  previously left the calendar showing a status the server never
+  actually stored, with only an easy-to-miss error banner as a clue -
+  now it reverts back to the last known-good value instead. A fast
+  double-tap on the same date could also fire two overlapping save
+  requests that raced each other; a date already saving is now locked
+  against a second tap until the first request finishes.
+* Added a small "Saving…" / "✓ Saved" status message near the
+  calendar's title on both screens, so it's always clear whether a tap
+  has actually gone through.
+* Added breathing room (margin) above and below the guide dashboard's
+  calendar card on its own page.
 
 = 0.28.0 =
 * A guide's own availability calendar (and the matching admin view on

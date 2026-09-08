@@ -804,6 +804,55 @@ cells render amber with the right tooltip text, have no `data-date`
 (so no click handler attaches) and the default cursor, and that past
 dates remain fully hidden.
 
+## "Sometimes it saves, sometimes it doesn't" - guide calendar save fix
+
+Reported directly against the guide's own availability calendar (and
+its admin-editing-on-behalf counterpart - both share the exact same fix,
+in lockstep as always). Root cause, once traced through `toggleDate()`
+in both `public/js/guide-dashboard.js` and `admin/js/guide-availability.js`:
+the click handler applied its change to `state.availability` optimistically
+and re-rendered immediately, but **never undid that change if the save
+actually failed** - the calendar just kept showing whatever the guide
+clicked, with no visible sign the server had rejected it beyond a small
+error banner easy to miss. A fast double-tap on the same date (easy to
+do by accident on mobile) made this worse: two overlapping requests for
+the same date, no protection against firing the second one before the
+first resolved, so which one "won" depended on network timing - a
+textbook race, matching "sometimes it saves, sometimes it doesn't"
+exactly.
+
+Fixed by:
+- **Reverting on failure.** `toggleDate()` now remembers the date's
+  previous value before applying the optimistic change, and puts it back
+  if the request's `.catch()` fires - the calendar never shows a status
+  the server didn't actually store.
+- **A pending lock per date** (`state.pending[iso]`). A date with a save
+  already in flight gets no `data-date` attribute at all (same mechanism
+  already used for past/booked dates), so a second click/tap on it before
+  the first request resolves is simply a no-op instead of firing a second,
+  racing request.
+- **A visible "Saving…" / "✓ Saved" status pill** (new `.tc-cal-status`
+  rules in `booking-app.css`) near the calendar's title/description,
+  `aria-live="polite"` so it's announced to a screen reader too - "Saved"
+  auto-clears after 2 seconds. The pending cell itself also dims slightly
+  (`.tc-cal-day.pending`) so the specific date being saved is visually
+  obvious, not just a page-level message.
+
+Also for the front-end guide dashboard specifically (not the admin
+edit-a-guide's-calendar screen, which lives inside wp-admin's own page
+chrome and wasn't part of this ask): `#tc-guide-dashboard-root` now has
+`margin-top`/`margin-bottom` so the card has breathing room on its own
+page instead of sitting flush against whatever's above/below it, and the
+existing title ("Your availability") + description text were kept but
+the description was expanded slightly for clarity.
+
+Verified in a browser against a mocked, artificially-delayed REST
+response: confirmed the "Saving…"/"Saved" pill transitions correctly,
+that a cell whose save fails reverts to its prior color instead of
+sticking on the optimistic guess, and that three rapid clicks on the
+same date produce only two actual requests (the pending lock correctly
+swallowing the click that landed while the first was still in flight).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

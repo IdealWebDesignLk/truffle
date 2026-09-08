@@ -358,6 +358,23 @@
 .tc-cal-day.booked { cursor: default; }
 .tc-cal-day.past { visibility: hidden; }
 .tc-cal-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; font-weight: 700; }
+/* A date whose save request is still in flight (guide-dashboard.js /
+   guide-availability.js's toggleDate()) - also not clickable, same as a
+   booked or past date, while its own request is pending. */
+.tc-cal-day.pending { opacity: .5; cursor: default; }
+
+/* Small "Saving…" / "✓ Saved" status pill shown near the calendar's own
+   title/description while a toggleDate() request is in flight or just
+   finished - see the "sometimes it saves, sometimes it doesn't" fix in
+   both calendar JS files' toggleDate(). */
+.tc-cal-status { display: inline-block; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 20px; margin-bottom: 12px; }
+.tc-cal-status.saving { background: var(--brand-bg); color: var(--brand-deep); }
+.tc-cal-status.saved { background: var(--available-bg); color: var(--available); }
+
+/* Front-end guide dashboard only (not the admin edit-a-guide's-calendar
+   screen, which lives inside wp-admin's own page chrome) - vertical
+   breathing room above/below the card on its own page. */
+#tc-guide-dashboard-root { margin-top: 32px; margin-bottom: 40px; }
 
 /* GitHub issues #67/#68 - guide dashboard login + access-denied pages,
    previously a single bare line of text with no styling at all. */

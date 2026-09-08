@@ -29,7 +29,10 @@
 		bookings: {}, // date -> summary string, for dates with a real booking
 		loading: true,
 		error: null,
+		pending: {}, // date -> true while a save request for that date is in flight
+		status: null, // 'saving' | 'saved' | null - small status message near the description
 	};
+	var savedTimer = null;
 
 	function apiGet( path ) {
 		return fetch( API_ROOT + path, { headers: { 'X-WP-Nonce': NONCE } } ).then( handleResponse );
@@ -115,14 +118,45 @@
 			} );
 	}
 
+	// See the matching comment in public/js/guide-dashboard.js's
+	// toggleDate() - same "sometimes it saves, sometimes it doesn't" fix:
+	// revert to the previous value on a failed save instead of leaving an
+	// optimistic guess on screen, and ignore a repeat click on a date
+	// that's still saving so two overlapping requests for the same date
+	// can't race each other.
 	function toggleDate( iso, currentlyBlocked ) {
+		if ( state.pending[ iso ] ) {
+			return;
+		}
 		var newStatus = currentlyBlocked ? 'available' : 'blocked';
+		var previous  = state.availability[ iso ];
 		state.availability[ iso ] = newStatus; // optimistic
+		state.pending[ iso ] = true;
+		state.status = 'saving';
+		state.error  = null;
+		clearTimeout( savedTimer );
 		render();
-		apiPost( BASE, { date: iso, status: newStatus } ).catch( function ( err ) {
-			state.error = err.message;
-			render();
-		} );
+		apiPost( BASE, { date: iso, status: newStatus } )
+			.then( function () {
+				delete state.pending[ iso ];
+				state.status = 'saved';
+				render();
+				savedTimer = setTimeout( function () {
+					state.status = null;
+					render();
+				}, 2000 );
+			} )
+			.catch( function ( err ) {
+				if ( previous ) {
+					state.availability[ iso ] = previous;
+				} else {
+					delete state.availability[ iso ];
+				}
+				delete state.pending[ iso ];
+				state.status = null;
+				state.error  = err.message;
+				render();
+			} );
 	}
 
 	function render() {
@@ -142,17 +176,29 @@
 			var status  = state.availability[ iso ] || 'available';
 			var booking = state.bookings[ iso ];
 			var isPast  = dateObj < today;
-			var cls   = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
-			var attrs = ( isPast || booking ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
+			var pending = !! state.pending[ iso ];
+			var cls = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
+			if ( pending ) {
+				cls += ' pending';
+			}
+			var attrs = ( isPast || booking || pending ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
 			if ( booking && ! isPast ) {
 				attrs += ' title="' + escapeAttr( booking ) + '"';
 			}
 			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
+		var statusHtml = '';
+		if ( 'saving' === state.status ) {
+			statusHtml = '<div class="tc-cal-status saving" aria-live="polite">Saving…</div>';
+		} else if ( 'saved' === state.status ) {
+			statusHtml = '<div class="tc-cal-status saved" aria-live="polite">✓ Saved</div>';
+		}
+
 		root.innerHTML = '<div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
 			'<p class="tc-sub">Tap a date to toggle it between available and a day off, on this guide’s behalf. Booked dates (hover for details) can’t be changed here.</p>' +
+			statusHtml +
 			'<div class="tc-grid-nav"><button id="tc-admin-prev-month" type="button">←</button><span class="range">' + monthName + '</span><button id="tc-admin-next-month" type="button">→</button></div>' +
 			( state.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +

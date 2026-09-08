@@ -34,7 +34,10 @@
 		bookings: {}, // date -> summary string, for dates with a real booking
 		loading: true,
 		error: null,
+		pending: {}, // date -> true while a save request for that date is in flight
+		status: null, // 'saving' | 'saved' | null - small status message near the title
 	};
+	var savedTimer = null;
 
 	function apiGet( path ) {
 		return fetch( API_ROOT + path, { headers: { 'X-WP-Nonce': NONCE } } ).then( handleResponse );
@@ -120,14 +123,49 @@
 			} );
 	}
 
+	// Reported as "sometimes it saves, sometimes it doesn't": the previous
+	// version applied the optimistic change and never undid it on a failed
+	// save, with no visible sign anything had gone wrong beyond a small
+	// error banner easy to miss - the calendar just quietly kept showing a
+	// status the server never actually stored. Fixed by reverting to the
+	// PREVIOUS value on failure (so the calendar never lies about what's
+	// saved) and by ignoring a repeat tap on a date that's still saving
+	// (state.pending) - a fast double-tap firing two overlapping requests
+	// for the same date, and whichever response lands second silently
+	// "winning," was a real way for this to happen, especially on mobile.
 	function toggleDate( iso, currentlyBlocked ) {
+		if ( state.pending[ iso ] ) {
+			return;
+		}
 		var newStatus = currentlyBlocked ? 'available' : 'blocked';
+		var previous  = state.availability[ iso ];
 		state.availability[ iso ] = newStatus; // optimistic
+		state.pending[ iso ] = true;
+		state.status = 'saving';
+		state.error  = null;
+		clearTimeout( savedTimer );
 		render();
-		apiPost( '/guide/availability', { date: iso, status: newStatus } ).catch( function ( err ) {
-			state.error = err.message;
-			render();
-		} );
+		apiPost( '/guide/availability', { date: iso, status: newStatus } )
+			.then( function () {
+				delete state.pending[ iso ];
+				state.status = 'saved';
+				render();
+				savedTimer = setTimeout( function () {
+					state.status = null;
+					render();
+				}, 2000 );
+			} )
+			.catch( function ( err ) {
+				if ( previous ) {
+					state.availability[ iso ] = previous;
+				} else {
+					delete state.availability[ iso ];
+				}
+				delete state.pending[ iso ];
+				state.status = null;
+				state.error  = err.message;
+				render();
+			} );
 	}
 
 	function render() {
@@ -147,21 +185,33 @@
 			var status  = state.availability[ iso ] || 'available';
 			var booking = state.bookings[ iso ];
 			var isPast  = dateObj < today;
+			var pending = !! state.pending[ iso ];
 			// A booked date always shows as "booked" and is never
 			// clickable, regardless of what the availability table says -
 			// see the top-of-file comment.
-			var cls   = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
-			var attrs = ( isPast || booking ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
+			var cls = isPast ? 'past' : ( booking ? 'booked' : ( 'blocked' === status ? 'blocked' : 'available' ) );
+			if ( pending ) {
+				cls += ' pending';
+			}
+			var attrs = ( isPast || booking || pending ) ? '' : ' data-date="' + iso + '" data-blocked="' + ( 'blocked' === status ? '1' : '0' ) + '"';
 			if ( booking && ! isPast ) {
 				attrs += ' title="' + escapeAttr( booking ) + '"';
 			}
 			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
+		var statusHtml = '';
+		if ( 'saving' === state.status ) {
+			statusHtml = '<div class="tc-cal-status saving" aria-live="polite">Saving\u2026</div>';
+		} else if ( 'saved' === state.status ) {
+			statusHtml = '<div class="tc-cal-status saved" aria-live="polite">\u2713 Saved</div>';
+		}
+
 		root.innerHTML = '<div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
 			'<h2 class="tc-title">Your availability</h2>' +
-			'<p class="tc-sub">Tap a date to mark it as a day off, or tap again to reopen it. Everything is available by default. Booked dates (hover for details) can\u2019t be changed here - contact admin if one needs to move.</p>' +
+			'<p class="tc-sub">This is your own calendar - tap a date to mark it as a day off, or tap again to reopen it. Everything is available by default. Booked dates (hover for details) can\u2019t be changed here - contact admin if one needs to move.</p>' +
+			statusHtml +
 			'<div class="tc-grid-nav"><button id="tc-prev-month">\u2190</button><span class="range">' + monthName + '</span><button id="tc-next-month">\u2192</button></div>' +
 			( state.loading ? '<p>Loading\u2026</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +
