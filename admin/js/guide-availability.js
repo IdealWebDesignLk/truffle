@@ -47,8 +47,17 @@
 		error: null,
 	};
 
+	// See the matching comment in public/js/guide-dashboard.js's apiGet() -
+	// a caching plugin/CDN was serving a stale cached response for this
+	// exact GET despite WordPress's own Cache-Control: no-store, which is
+	// what actually caused "it says saved but reverts on refresh" (found by
+	// live-site debugging, confirmed by a request that bypassed the cache
+	// returning correct data the normal one didn't). Applied here too even
+	// though this specific screen wasn't the one reported broken - the same
+	// URL-keyed cache could serve either screen's identical request.
 	function apiGet( path ) {
-		return fetch( API_ROOT + path, { headers: { 'X-WP-Nonce': NONCE } } ).then( handleResponse );
+		var bust = path.indexOf( '?' ) === -1 ? '?' : '&';
+		return fetch( API_ROOT + path + bust + '_=' + Date.now(), { headers: { 'X-WP-Nonce': NONCE }, cache: 'no-store' } ).then( handleResponse );
 	}
 	function handleResponse( res ) {
 		return res.json().then( function ( data ) {

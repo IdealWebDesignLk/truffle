@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.30.1
+Stable tag: 0.30.2
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,19 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.30.2 =
+* Found and fixed the actual cause of "the guide calendar says saved
+  but reverts on refresh," confirmed by testing directly against the
+  live site: saving was never broken - every save was genuinely
+  persisting to the database. What was broken is the read immediately
+  after: something in front of WordPress (a caching plugin or CDN) was
+  serving a stale cached response for the calendar's own data request,
+  even though WordPress explicitly marks that response as
+  `no-store`/not cacheable. Fixed by making every one of the guide
+  calendar's data requests (on both the guide dashboard and the admin
+  screen) uniquely cache-busted, so this can't happen regardless of
+  what's doing the caching or how it's configured.
 
 = 0.30.1 =
 * Booking emails now show extras - previously missing from every one

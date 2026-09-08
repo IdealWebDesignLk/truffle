@@ -877,6 +877,50 @@ still change here:
   version needed scrolling back up to see, which was raised separately
   once the message was actually visible again after a hard refresh.
 
+**Actual root cause, found by live-site debugging** (the user provided
+direct login credentials for this specifically, after the fixes above
+still didn't resolve it): confirmed, with real requests against the
+live site, that saving was never actually broken - the write itself
+always succeeded (`POST /guide/availability/bulk` correctly returned
+`{"date":"2026-09-10","success":true}`, and a request that bypassed
+caching immediately afterward showed the change had genuinely persisted
+in the database). What was broken is the **read**: the *exact same* GET
+request (`/wp-json/tc/v1/guide/availability?start=...&end=...`),
+requested normally right after a page reload, kept returning a **stale
+cached response** missing the just-saved change - even though
+WordPress's own response already carries `Cache-Control: no-cache,
+must-revalidate, max-age=0, no-store, private`. Something in front of
+WordPress (a caching plugin or CDN/host-level cache) is caching this GET
+by URL regardless of that header. This is a more precise version of the
+caching diagnosis two paragraphs up - not really about the *page* being
+cached (though that was real too, and explained the earlier missing-JS/
+stale-nonce symptoms), but specifically about this REST *endpoint's own
+response* being cached independently of the page.
+
+Fixed at the code level rather than relying on a server-side caching
+exclusion, since that requires access to (and correct configuration of)
+whatever caching layer this site is using, which varies by host and
+isn't something this repo controls: `apiGet()` in both
+`public/js/guide-dashboard.js` and `admin/js/guide-availability.js` now
+appends a `_=<timestamp>` query parameter to every GET request, making
+each request's URL unique - this defeats any cache keyed on the full
+URL (which is how the overwhelming majority of caching plugins/CDNs
+key their cache) regardless of why it was ignoring the `Cache-Control`
+header, without needing to know or touch whatever is doing the caching.
+`cache: 'no-store'` was also added to the `fetch()` call itself, as the
+browser's own equivalent for anything a URL-based cache alone wouldn't
+already catch. Applied to both files even though only the front-end
+guide dashboard was the one reported broken - the same URL-keyed cache
+could just as easily serve a stale response to the admin screen's
+identical request, it just hadn't been noticed there yet.
+
+Confirmed live: toggled a real date, saved, reloaded the page - the
+change reverted, reproducing the report exactly. Then fetched the same
+endpoint with a cache-busting parameter added by hand and confirmed the
+save *had* actually gone through. The specific date toggled for this
+test was reverted back to its original value afterward, so no real
+data was left changed by the debugging session itself.
+
 ## Booking emails are now styled HTML, and appear on WooCommerce's own "New order" email
 
 Every `wp_mail()` this plugin sends (`TC_Notifications`'s confirmation/

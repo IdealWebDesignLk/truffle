@@ -49,8 +49,21 @@
 	};
 	var savedTimer = null;
 
+	// Live-site debugging turned up the actual cause of "it says saved but
+	// reverts on refresh": the save itself was always working (confirmed
+	// directly - the write showed up immediately via a request that bypassed
+	// caching), but this GET kept being served a stale cached response by
+	// something in front of WordPress (a caching plugin or CDN) that ignores
+	// the no-store Cache-Control WordPress already sends for this route - so
+	// the calendar reloaded showing old data no matter how many times a
+	// change actually saved correctly. `_=Date.now()` makes each request's
+	// URL unique, which defeats a cache keyed on the full URL (almost all of
+	// them are) regardless of what's ignoring the Cache-Control header;
+	// `cache: 'no-store'` is the browser's own equivalent, for whatever a
+	// URL-based cache alone wouldn't already catch.
 	function apiGet( path ) {
-		return fetch( API_ROOT + path, { headers: { 'X-WP-Nonce': NONCE } } ).then( handleResponse );
+		var bust = path.indexOf( '?' ) === -1 ? '?' : '&';
+		return fetch( API_ROOT + path + bust + '_=' + Date.now(), { headers: { 'X-WP-Nonce': NONCE }, cache: 'no-store' } ).then( handleResponse );
 	}
 	function apiPost( path, body ) {
 		return fetch( API_ROOT + path, {
