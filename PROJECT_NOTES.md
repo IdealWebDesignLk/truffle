@@ -1212,6 +1212,30 @@ setting to configure. Non-guides (customers, admins) are untouched -
 the filter returns whatever `$redirect_to` it was given unchanged for
 anyone without that capability.
 
+## A prominent link back to the guide dashboard on WooCommerce My Account
+
+A guide can still end up on the regular WooCommerce My Account page rather
+than `/guide-dashboard/` directly - clicking "My account" in the site
+header, or a "View order" link in an email, both go there. Added a
+banner, guide-only, at the top of My Account's Dashboard tab (hooked on
+`woocommerce_account_dashboard`) with one link back to their calendar -
+deliberately its own filled-brand block (`.tc-account-guide-banner` in
+booking-app.css) rather than another entry in the account nav, since the
+ask was specifically a *prominent* link, not a permanent extra menu item
+sitting next to Orders/Addresses/Account details (most of which don't
+mean much for a guide's account anyway).
+
+Reuses `TC_Guide_Dashboard::dashboard_url()` (made `public` for this -
+previously only `login_redirect` used it) rather than a second lookup for
+the same page. Needed its own root ID, `#tc-account-dashboard-root`,
+added to booking-app.css's shared variable-scope selector (`--brand-deep`
+etc. are scoped to a specific list of root IDs, not `:root` - see that
+file's header) - without it the banner rendered with no background/button
+styling at all, caught by an actual rendered preview, not code review
+(the same category of bug the email charset issue was, earlier in this
+file). Nothing renders for anyone without `tc_manage_own_availability`
+(real customers).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

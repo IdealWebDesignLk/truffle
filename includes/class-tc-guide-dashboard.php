@@ -48,8 +48,11 @@ class TC_Guide_Dashboard {
 	 * matching this class's existing "just place the shortcode" setup (see
 	 * the file header). Cached per-request since login_redirect can run
 	 * more than once and other callers may want this later.
+	 *
+	 * Public since TC_Woocommerce::render_guide_dashboard_link() reuses
+	 * this too, rather than a second copy of the same lookup living there.
 	 */
-	private static function dashboard_url() {
+	public static function dashboard_url() {
 		static $url = null;
 		if ( null !== $url ) {
 			return $url;

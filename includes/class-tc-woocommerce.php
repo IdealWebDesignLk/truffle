@@ -42,16 +42,24 @@ class TC_Woocommerce {
 		// line item's (fairly compressed) name/price - see
 		// add_booking_details_to_order_email().
 		add_action( 'woocommerce_email_order_details', array( __CLASS__, 'add_booking_details_to_order_email' ), 5, 4 );
+		// A guide landing on My Account (rather than their own dashboard
+		// directly) should see one prominent way back to it - see
+		// render_guide_dashboard_link().
+		add_action( 'woocommerce_account_dashboard', array( __CLASS__, 'render_guide_dashboard_link' ) );
 	}
 
 	/**
 	 * booking-app.css is reused here rather than a new stylesheet, so the
-	 * summary below (.tc-card/.tc-title/.tc-rline) looks like the same
-	 * component as the review step, not a bolted-on block - see the
-	 * #tc-checkout-summary-root rules at the top of that file.
+	 * pay-page summary (.tc-card/.tc-title/.tc-rline) and the My Account
+	 * guide banner (.tc-account-guide-banner) look like the same component
+	 * set as the rest of the plugin, not bolted-on blocks - see the
+	 * #tc-checkout-summary-root and .tc-account-guide-banner rules at the
+	 * top/bottom of that file respectively.
 	 */
 	public static function enqueue_pay_page_assets() {
-		if ( function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page() ) {
+		$on_pay_page     = function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page();
+		$on_account_page = function_exists( 'is_account_page' ) && is_account_page();
+		if ( $on_pay_page || $on_account_page ) {
 			wp_enqueue_style( 'tc-booking-app', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
 		}
 	}
@@ -104,6 +112,40 @@ class TC_Woocommerce {
 		}
 		echo '<div class="tc-rline total"><span class="l">' . esc_html__( 'Totaal', 'tc-booking' ) . '</span><span class="r">&euro;' .
 			esc_html( number_format_i18n( (float) $b['total'], 2 ) ) . '</span></div>';
+		echo '</div></div>';
+	}
+
+	/**
+	 * A prominent (not just another My Account nav item) link back to
+	 * their own calendar, for guides who end up on the regular WooCommerce
+	 * My Account dashboard instead of /guide-dashboard/ directly - e.g.
+	 * clicking "My account" from the site header, or a "View order" link
+	 * in an email. Fires on the Dashboard tab specifically
+	 * (woocommerce_account_dashboard), the first thing shown after login,
+	 * rather than the account nav (every tab) - the goal is one obvious
+	 * way back to the calendar, not a permanent extra menu entry sitting
+	 * next to Orders/Addresses/Account details, most of which don't apply
+	 * to a guide's account anyway.
+	 *
+	 * Nothing shown to anyone without tc_manage_own_availability (real
+	 * customers).
+	 */
+	public static function render_guide_dashboard_link() {
+		if ( ! current_user_can( 'tc_manage_own_availability' ) ) {
+			return;
+		}
+		$dashboard_url = TC_Guide_Dashboard::dashboard_url();
+		if ( ! $dashboard_url ) {
+			return;
+		}
+		// Wrapped in #tc-account-dashboard-root so it picks up the shared
+		// --brand-deep/--brand-bg/etc. CSS variables, which booking-app.css
+		// scopes to a specific list of root IDs rather than :root - see the
+		// top of that file.
+		echo '<div id="tc-account-dashboard-root"><div class="tc-account-guide-banner">';
+		echo '<div><h2 class="tc-title">' . esc_html__( 'Jouw gidsagenda', 'tc-booking' ) . '</h2>';
+		echo '<p class="tc-sub">' . esc_html__( 'Beheer hier je beschikbaarheid en bekijk je boekingen.', 'tc-booking' ) . '</p></div>';
+		echo '<a class="tc-btn primary" href="' . esc_url( $dashboard_url ) . '">' . esc_html__( 'Ga naar je agenda', 'tc-booking' ) . '</a>';
 		echo '</div></div>';
 	}
 

@@ -1,5 +1,5 @@
 /* TC Booking - front-end styles. Ported from the approved prototype. */
-#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root {
+#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root, #tc-account-dashboard-root {
   /* GitHub issue #22 - brand accent (buttons, progress bar, selection
      borders/focus, map pins) switched from green to purple, and the warm
      brown/cream neutrals lightened toward white - to match Truffle
@@ -43,7 +43,7 @@
   color: var(--ink);
   line-height: 1.55;
 }
-#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root * { box-sizing: border-box; }
+#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root *, #tc-account-dashboard-root * { box-sizing: border-box; }
 
 /* GitHub issue #69 - booking summary on the WooCommerce pay-for-order
    page, reusing .tc-card/.tc-title/.tc-rline from the review step so it
@@ -52,6 +52,10 @@
    directly after it, unlike .tc-card elsewhere which is the whole page). */
 #tc-checkout-summary-root { max-width: none; margin: 0 0 24px; }
 #tc-checkout-summary-root .tc-card { padding: 22px; }
+/* Sits inside WooCommerce's own My Account content column, so it shouldn't
+   fight that column's own width/centering the way the base rule above
+   (max-width: 860px, margin: 0 auto) would. */
+#tc-account-dashboard-root { max-width: none; margin: 0; }
 
 .tc-progress { display: flex; gap: 4px; margin-bottom: 24px; }
 .tc-progress .seg { flex: 1; height: 4px; border-radius: 3px; background: var(--line); }
@@ -423,3 +427,14 @@
 .tc-auth-card #wp-submit { width: 100%; -webkit-appearance: none; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 600; cursor: pointer; border: 1px solid var(--brand-deep); background: var(--brand-deep); color: #fff; }
 .tc-auth-card #wp-submit:hover { background: var(--brand); border-color: var(--brand); }
 .tc-auth-card #wp-submit:focus { outline: none; box-shadow: 0 0 0 3px var(--brand-bg); }
+
+/* WooCommerce My Account "go to your dashboard" banner, guides only - see
+   TC_Woocommerce::render_guide_dashboard_link(). Deliberately its own
+   filled-brand block rather than a plain .tc-card, so it reads as the one
+   thing on the page a guide actually needs, not just another list item
+   next to Orders/Addresses/Account details. */
+.tc-account-guide-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; background: var(--brand-deep); border-radius: var(--radius); padding: 24px 28px; margin: 0 0 32px; color: #fff; }
+.tc-account-guide-banner .tc-title { color: #fff; margin: 0 0 4px; }
+.tc-account-guide-banner .tc-sub { color: var(--brand-bg); margin: 0; }
+.tc-account-guide-banner .tc-btn.primary { background: #fff; border-color: #fff; color: var(--brand-deep); text-decoration: none; display: inline-block; white-space: nowrap; }
+.tc-account-guide-banner .tc-btn.primary:hover { background: var(--brand-bg); }
