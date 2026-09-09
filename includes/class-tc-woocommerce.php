@@ -2,12 +2,23 @@
 /**
  * WooCommerce integration.
  *
- * Bookings are represented in WooCommerce as fee-based orders rather than
- * orders containing WC_Product line items. This avoids having to keep a
- * shadow WC_Product in sync with every Service/Extra edited in the TC admin
- * screens - the booking's own price snapshot (captured at creation time in
- * class-tc-rest-api.php) is the single source of truth, and WooCommerce is
- * used purely for its cart/checkout/payment/refund machinery.
+ * Bookings were originally represented in WooCommerce as fee-based orders
+ * (WC_Order_Item_Fee, no linked product) rather than orders containing real
+ * WC_Product line items, specifically to avoid keeping a shadow WC_Product
+ * in sync with every Service/Extra edited in the TC admin screens.
+ *
+ * That changed when a third-party invoicing plugin (Booster for
+ * WooCommerce's PDF invoicing module) turned out to render a generic
+ * "Appointment" placeholder for fee-only line items, because it has no
+ * product to read a name/description from - see
+ * get_or_create_placeholder_product(). Order items now reference a real
+ * (catalog-hidden, zero-price) WC_Product per service/extra, so tools that
+ * expect a normal product-backed order still see one. This doesn't bring
+ * back the sync problem the original design avoided: the placeholder
+ * product's own title is only ever a fallback label, not what our own
+ * emails/invoices show - every line item still gets an explicit
+ * set_name() override built from the booking's own price snapshot, which
+ * remains the single source of truth for what's charged.
  *
  * @package TC_Booking
  */
@@ -223,15 +234,25 @@ class TC_Woocommerce {
 			)
 			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date_display );
 
-		self::add_fee_line( $order, $fee_label, $service['price'] * $party_multiplier );
+		$service_product = self::get_or_create_placeholder_product( 'tc-service-' . $service_id, $service['name'] );
+		self::add_product_line( $order, $service_product, $fee_label, $service['price'] * $party_multiplier );
 
 		if ( is_array( $extras ) ) {
 			foreach ( $extras as $extra ) {
 				if ( $extra['qty'] <= 0 ) {
 					continue;
 				}
-				self::add_fee_line(
+				// Keyed by service + extra key (not just the label) since
+				// two services can each define their own extra of the same
+				// name at a different price - the placeholder product's own
+				// price is irrelevant either way (the line's real amount is
+				// always set explicitly below), but keeping them distinct
+				// avoids one service's extra edits ever touching another's.
+				$extra_sku     = 'tc-extra-' . $service_id . '-' . ( isset( $extra['key'] ) ? $extra['key'] : sanitize_title( $extra['label'] ) );
+				$extra_product = self::get_or_create_placeholder_product( $extra_sku, $extra['label'] );
+				self::add_product_line(
 					$order,
+					$extra_product,
 					sprintf( '%s x%d', $extra['label'], $extra['qty'] ),
 					$extra['price'] * $extra['qty']
 				);
@@ -280,33 +301,66 @@ class TC_Woocommerce {
 	}
 
 	/**
-	 * Adds a fee line item to an order.
+	 * Finds (by SKU) or lazily creates a hidden, zero-price placeholder
+	 * WC_Product to back a booking's order line items - see this file's
+	 * header comment for why this exists (a third-party invoicing plugin
+	 * needs a real product to read a name from). `catalog_visibility`
+	 * 'hidden' plus a 'publish' status keeps it a fully functional product
+	 * (addable to orders, visible to any tool that reads WooCommerce
+	 * products/reports) without it ever appearing in the shop, search, or
+	 * being purchasable directly. Price is deliberately left at 0 - it is
+	 * never read for what a booking actually charges; see add_product_line().
+	 */
+	private static function get_or_create_placeholder_product( $sku, $name ) {
+		$product_id = wc_get_product_id_by_sku( $sku );
+		if ( $product_id ) {
+			return wc_get_product( $product_id );
+		}
+		$product = new WC_Product_Simple();
+		$product->set_name( $name );
+		$product->set_sku( $sku );
+		$product->set_status( 'publish' );
+		$product->set_catalog_visibility( 'hidden' );
+		$product->set_virtual( true );
+		$product->set_tax_status( 'none' );
+		$product->set_regular_price( 0 );
+		$product->save();
+		return $product;
+	}
+
+	/**
+	 * Adds a product-linked line item to an order, with the display name
+	 * and amount fully overridden - the placeholder product's own name and
+	 * (zero) price are never what's actually shown or charged.
 	 *
 	 * `WC_Order::add_fee( $name, $amount )` is NOT a real WooCommerce method -
-	 * it was deprecated in WC 2.7 (2016) in favor of building a
-	 * WC_Order_Item_Fee and adding it via add_item(), and even the old
-	 * deprecated version took a single fee object, not (name, amount)
-	 * arguments. Calling the old two-argument form (as this file used to)
-	 * fatals with "Call to undefined method" against any real WooCommerce
-	 * install - this plugin was only ever exercised against a hand-written
-	 * stub that (incorrectly) mirrored that call shape. This is what GitHub
-	 * issue #11 ("checkout issue") turned out to be: the order got created
-	 * by wc_create_order() itself (which saves immediately), but every fee
-	 * line failed to attach, leaving a real $0 order that WooCommerce then
+	 * it was deprecated in WC 2.7 (2016) in favor of building an order item
+	 * object and adding it via add_item(), and even the old deprecated
+	 * version took a single fee object, not (name, amount) arguments.
+	 * Calling the old two-argument form (as this file used to) fatals with
+	 * "Call to undefined method" against any real WooCommerce install -
+	 * this plugin was only ever exercised against a hand-written stub that
+	 * (incorrectly) mirrored that call shape. This is what GitHub issue #11
+	 * ("checkout issue") turned out to be: the order got created by
+	 * wc_create_order() itself (which saves immediately), but every line
+	 * failed to attach, leaving a real $0 order that WooCommerce then
 	 * correctly refuses to take payment for.
 	 *
-	 * Tax is explicitly set to 'none' - the booking's own price snapshot
-	 * (service price + extras, already final) is the single source of
-	 * truth per this class's file header; WooCommerce isn't calculating or
-	 * adding tax on top of it.
+	 * No tax is added - the booking's own price snapshot (service price +
+	 * extras, already final) is the single source of truth per this
+	 * class's file header, so calculate_totals()'s tax pass must not add
+	 * anything on top of it. That's driven by the placeholder product's own
+	 * tax_status ('none', set in get_or_create_placeholder_product()) since
+	 * order items read tax status live from their linked product.
 	 */
-	private static function add_fee_line( WC_Order $order, $name, $amount ) {
-		$fee = new WC_Order_Item_Fee();
-		$fee->set_name( $name );
-		$fee->set_amount( $amount );
-		$fee->set_total( $amount );
-		$fee->set_tax_status( 'none' );
-		$order->add_item( $fee );
+	private static function add_product_line( WC_Order $order, WC_Product $product, $name, $amount ) {
+		$item = new WC_Order_Item_Product();
+		$item->set_product( $product );
+		$item->set_name( $name );
+		$item->set_quantity( 1 );
+		$item->set_subtotal( $amount );
+		$item->set_total( $amount );
+		$order->add_item( $item );
 	}
 
 	public static function cancel_order( $order_id ) {

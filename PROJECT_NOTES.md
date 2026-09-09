@@ -1153,6 +1153,40 @@ rejected and recorded as an error rather than silently dropped, an
 invalid date/status pair is silently skipped, and a request with no
 `tc_availability` field at all is a clean no-op.
 
+## WooCommerce order line items are now real (hidden) products, not bare fees
+
+Reported from a screenshot of a "Factuur" PDF: a third-party plugin
+generated it (Booster for WooCommerce's PDF invoicing module - not part of
+this codebase at all, confirmed by grepping the whole plugin for
+"invoice"/"factuur" and finding nothing), and it showed a single generic
+"Appointment" line with none of the booking's actual details. Root cause:
+`create_order_for_booking()` added every line as a bare `WC_Order_Item_Fee`
+(no linked WC_Product), a deliberate original design choice (see this
+file's own header comment before this change) to avoid keeping a shadow
+product in sync with every Service/Extra edited in the TC admin screens.
+Booster's invoice module apparently can't render a real name/description
+for a fee-only line item with nothing to look up, and falls back to that
+generic placeholder.
+
+Fixed by giving each line a real product to point to:
+`get_or_create_placeholder_product()` looks up (by a deterministic SKU -
+`tc-service-{id}` for the main service line, `tc-extra-{service_id}-{key}`
+per extra) or lazily creates a `WC_Product_Simple` that's `publish` status
+but `catalog_visibility` 'hidden' - fully valid as an order line item and
+visible to any tool that reads WooCommerce products, but never shown in
+the shop, search, or purchasable directly. Its regular price is left at 0
+and is never read for what a booking actually charges - `add_product_line()`
+still sets the line's display name and subtotal/total explicitly, exactly
+as `add_fee_line()` did before, so the booking's own price snapshot stays
+the single source of truth (the sync problem the original fee-only design
+was avoiding never actually comes back - only the placeholder product's
+own fallback title could go stale if a service is renamed later, and nothing
+of ours ever reads that title once the line exists). Tax stays off via the
+placeholder product's own `tax_status` set to 'none' at creation, matching
+the fee items' `set_tax_status( 'none' )` before them - `WC_Order_Item_Product`
+doesn't expose that setter directly since order items read tax status live
+from whatever product they're linked to.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
