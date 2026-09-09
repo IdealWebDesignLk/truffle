@@ -1187,6 +1187,31 @@ the fee items' `set_tax_status( 'none' )` before them - `WC_Order_Item_Product`
 doesn't expose that setter directly since order items read tax status live
 from whatever product they're linked to.
 
+## Guides land on their dashboard after login, however they log in
+
+Previously a guide only ended up on `/guide-dashboard/` after login if they
+logged in through the form embedded on that page itself -
+`wp_login_form( array( 'redirect' => get_permalink() ) )` in
+`login_prompt()` already handled that case. Logging in any other way (a
+bookmark to `wp-login.php`, a password-reset email link, "Remember me"
+expiring and WordPress reprompting there instead) dropped them into
+wp-admin by default, which the `tc_guide` role has no real use for - it
+only grants `read` plus `tc_manage_own_availability`, so wp-admin's menu
+renders essentially empty for them.
+
+Fixed with a `login_redirect` filter (`redirect_guide_to_dashboard()`) -
+runs on every login regardless of which form was used, checks
+`tc_manage_own_availability` (true only for guides), and sends anyone who
+has it to whichever page carries `[tc_guide_dashboard]` instead of
+whatever WordPress/another plugin had already decided. That page isn't
+pinned to a specific ID anywhere in this plugin's settings (matching how
+this class already works - "place the shortcode on a page" per the file's
+own header comment), so `dashboard_url()` finds it with a `post_content
+LIKE '%[tc_guide_dashboard%'` lookup rather than requiring one more
+setting to configure. Non-guides (customers, admins) are untouched -
+the filter returns whatever `$redirect_to` it was given unchanged for
+anyone without that capability.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

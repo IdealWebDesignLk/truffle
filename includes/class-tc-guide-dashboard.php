@@ -16,6 +16,53 @@ class TC_Guide_Dashboard {
 
 	public static function init() {
 		add_shortcode( 'tc_guide_dashboard', array( __CLASS__, 'render' ) );
+		add_filter( 'login_redirect', array( __CLASS__, 'redirect_guide_to_dashboard' ), 10, 3 );
+	}
+
+	/**
+	 * Guides logging in via the dashboard page's own embedded form already
+	 * land back there - wp_login_form()'s redirect param in login_prompt()
+	 * below handles that. This covers every other way in: WordPress's own
+	 * wp-login.php directly (a bookmark, a password-reset email link,
+	 * "Remember me" expiring and the browser reprompting there instead of
+	 * on the dashboard page). Without this, any of those drop a guide into
+	 * wp-admin, which the tc_guide role has no real access to (just 'read'
+	 * plus tc_manage_own_availability - no menu items resolve to anything
+	 * useful there).
+	 *
+	 * Only guides are affected - anyone without tc_manage_own_availability
+	 * (customers, admins) keeps whatever $redirect_to WordPress or another
+	 * plugin already decided on.
+	 */
+	public static function redirect_guide_to_dashboard( $redirect_to, $requested_redirect_to, $user ) {
+		if ( ! ( $user instanceof WP_User ) || ! user_can( $user, 'tc_manage_own_availability' ) ) {
+			return $redirect_to;
+		}
+		$dashboard_url = self::dashboard_url();
+		return $dashboard_url ? $dashboard_url : $redirect_to;
+	}
+
+	/**
+	 * Finds the page [tc_guide_dashboard] has been placed on, wherever
+	 * that is - there's no settings field pinning it to a specific page ID,
+	 * matching this class's existing "just place the shortcode" setup (see
+	 * the file header). Cached per-request since login_redirect can run
+	 * more than once and other callers may want this later.
+	 */
+	private static function dashboard_url() {
+		static $url = null;
+		if ( null !== $url ) {
+			return $url;
+		}
+		global $wpdb;
+		$page_id = $wpdb->get_var(
+			"SELECT ID FROM {$wpdb->posts}
+			 WHERE post_status = 'publish' AND post_type = 'page'
+			 AND post_content LIKE '%[tc_guide_dashboard%'
+			 LIMIT 1"
+		);
+		$url = $page_id ? get_permalink( $page_id ) : '';
+		return $url;
 	}
 
 	public static function render() {
