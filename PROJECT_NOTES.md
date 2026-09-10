@@ -1356,6 +1356,65 @@ caught earlier in this file would otherwise slip through: the new
 CSS-variable-scope selector list (like `#tc-account-dashboard-root`
 before it) or the calendar rendered with no color/styling at all.
 
+## Per-location Max capacity overrides (GitHub issue #74)
+
+A service's Max capacity used to be one global number regardless of
+which location the ceremony happens at - a problem once a smaller venue
+genuinely can't host as many people as a service's usual max.
+
+New "Location Capacity Overrides" meta box on the Service edit screen
+(`render_service_capacity_overrides()`), a repeater - location dropdown +
+a max-people number, "+ Add location override" - same clone-the-
+`<script type="text/template">` pattern the existing Extras repeater
+already used, so `admin/js/admin.js` was generalized into one
+`initRepeater()` both now share rather than duplicating the add/remove
+logic a second time. Stored as `_tc_location_capacity_overrides` on the
+Service (array of `{location_id, max_capacity}`, same "one meta row
+holding an array" convention as extras/special dates elsewhere in this
+file) and exposed via `TC_Availability::get_service_data()`.
+
+New `TC_Availability::effective_max_capacity( $service, $location_id )` -
+the override for that location if one exists, else the service's own
+global `max_capacity`, and `0`/no `$location_id` always falls back to the
+global value so nothing breaks for a caller that doesn't have a location
+in scope. Replaces every direct `$service['max_capacity']` read that DOES
+have a location available: `is_exclusive()` (now takes `$location_id` -
+an override down to 1 seat makes a service exclusive at that location
+even if its global max is higher), `pick_guide()`, and
+`get_date_status_and_remaining()`'s shared-service remaining-seats math.
+`TC_Rest_Api::get_services()` resolves and sends the effective value
+instead of the flat one (falling back to flat when no `location_id`
+query param was given, e.g. the very first fetch before a location is
+picked) - the booking widget's own `partySizeMax()`/max-capacity display
+needed zero front-end changes as a result, since it already treats
+whatever `max_capacity` the API sent as authoritative, and locations are
+always picked before services in this widget's flow. `create_booking()`'s
+own party-size cap and the admin "Add New Booking" form's
+(`save_new_booking()`) equivalent cap were both updated the same way, so
+neither can clamp a party size against the wrong (too-generous, global)
+number before the real availability check runs.
+
+Deliberately NOT wired into `admin/js/booking-form.js` (the "Add New
+Booking" screen's live party-size-max display, which still shows the flat
+global number while an admin is filling out the form) - that's cosmetic
+only, `save_new_booking()`'s own server-side clamp (just described) is
+what actually enforces the override, so a stale-looking max in that one
+input never lets an admin create an overbooked group. A live-reactive
+version of that display, if wanted later, would need the same
+"CFG payload + change listener on the location field" approach
+`guide-special-dates.js` already uses for its own live reactivity.
+
+Verified with a standalone stubbed harness (Reflection into
+`effective_max_capacity()`/`is_exclusive()`/`get_date_status_and_
+remaining()` directly) - a location with no override uses the service's
+global max; an overridden location resolves to its own number, including
+correctly flipping `is_exclusive()` from false to true when an override
+brings capacity down to 1; and the shared-service remaining-seat count in
+the grid matches the overridden cap, not the global one. Also verified
+the repeater's add/remove UI with an actual browser preview (index
+numbering on a freshly-added row, row removal), reusing the exact
+same JS the Extras repeater already had covered.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

@@ -292,7 +292,13 @@ class TC_Rest_Api {
 				'duration_days' => $service['duration_days'],
 				'start_time'    => $service['start_time'],
 				'min_capacity'  => $service['min_capacity'],
-				'max_capacity'  => $service['max_capacity'],
+				// GitHub issue #74 - resolved against $location_id (a
+				// smaller venue can override this service's own global Max
+				// capacity down) rather than sending the flat, unresolved
+				// value - falls back to that same flat value when no
+				// location_id was given (e.g. the very first services
+				// fetch, before a location is picked).
+				'max_capacity'  => TC_Availability::effective_max_capacity( $service, $location_id ),
 				'allow_party'   => $service['allow_party'],
 				'extras'        => $extras,
 				// GitHub issues #71/#72 - lets the booking widget's
@@ -505,7 +511,9 @@ class TC_Rest_Api {
 		$party_size = 1;
 		if ( $service['allow_party'] ) {
 			$requested_party = isset( $params['party_size'] ) ? max( 1, (int) $params['party_size'] ) : 1;
-			$max_party       = max( 1, (int) $service['max_capacity'] );
+			// GitHub issue #74 - capped at this location's own override if
+			// it has one, not just the service's flat global Max capacity.
+			$max_party       = TC_Availability::effective_max_capacity( $service, $location_id );
 			$party_size      = min( $requested_party, $max_party );
 		}
 

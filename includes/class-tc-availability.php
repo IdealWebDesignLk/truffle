@@ -94,8 +94,8 @@ class TC_Availability {
 	public static function pick_guide( $service_id, $location_id, $date_str, $party_size = 1 ) {
 		$service      = self::get_service_data( $service_id );
 		$guide_ids    = self::get_guides_for( $location_id, $service_id );
-		$exclusive    = self::is_exclusive( $service );
-		$max_capacity = max( 1, (int) $service['max_capacity'] );
+		$exclusive    = self::is_exclusive( $service, $location_id );
+		$max_capacity = self::effective_max_capacity( $service, $location_id );
 		$party_size   = max( 1, (int) $party_size );
 
 		foreach ( $guide_ids as $guide_id ) {
@@ -126,8 +126,8 @@ class TC_Availability {
 	 * stranger just because Max capacity was set higher than the actual
 	 * party size.
 	 */
-	private static function is_exclusive( $service ) {
-		$max_capacity = max( 1, (int) $service['max_capacity'] );
+	private static function is_exclusive( $service, $location_id = 0 ) {
+		$max_capacity = self::effective_max_capacity( $service, $location_id );
 		return 1 === $max_capacity || empty( $service['allow_shared_seats'] );
 	}
 
@@ -155,7 +155,7 @@ class TC_Availability {
 			return array( 'status' => 'off', 'remaining' => null );
 		}
 
-		if ( self::is_exclusive( $service ) ) {
+		if ( self::is_exclusive( $service, $location_id ) ) {
 			foreach ( $guide_ids as $guide_id ) {
 				if ( self::guide_is_free( $guide_id, $service, $date_str, $location_id ) ) {
 					return array( 'status' => 'available', 'remaining' => null );
@@ -168,7 +168,7 @@ class TC_Availability {
 		// guides for this date (a group session is one guide, one date - but
 		// we don't yet know which guide will end up assigned, so we check
 		// whether ANY covering guide has room).
-		$max_capacity = max( 1, (int) $service['max_capacity'] );
+		$max_capacity = self::effective_max_capacity( $service, $location_id );
 		foreach ( $guide_ids as $guide_id ) {
 			if ( ! self::guide_available_on( $guide_id, $service, $date_str, $location_id ) ) {
 				continue;
@@ -435,7 +435,8 @@ class TC_Availability {
 		if ( ! $post || TC_CPT::SERVICE !== $post->post_type ) {
 			return null;
 		}
-		$extras = get_post_meta( $service_id, '_tc_extras', true );
+		$extras    = get_post_meta( $service_id, '_tc_extras', true );
+		$overrides = get_post_meta( $service_id, '_tc_location_capacity_overrides', true );
 		return array(
 			'id'                 => $post->ID,
 			'name'               => $post->post_title,
@@ -456,7 +457,36 @@ class TC_Availability {
 			// its normal --available color rather than an empty swatch.
 			'is_special'         => (bool) get_post_meta( $service_id, '_tc_is_special', true ),
 			'special_color'      => (string) get_post_meta( $service_id, '_tc_special_color', true ),
+			// GitHub issue #74 - per-location Max capacity overrides (a
+			// smaller venue can't host as many people as this service's
+			// own global Max capacity above). Raw override list, resolved
+			// against a specific location via effective_max_capacity()
+			// wherever $service['max_capacity'] would otherwise be used
+			// directly for a specific booking/date.
+			'location_capacity_overrides' => is_array( $overrides ) ? $overrides : array(),
 		);
+	}
+
+	/**
+	 * $service['max_capacity'] unless a per-location override exists for
+	 * $location_id (see get_service_data()) - falls back to the service's
+	 * own global max_capacity when $location_id is 0/unknown, so every
+	 * existing internal caller that doesn't (yet) have a location in scope
+	 * keeps working exactly as before.
+	 *
+	 * Public since TC_Rest_Api::get_services() resolves the same value for
+	 * what it sends the booking widget, rather than duplicating this
+	 * lookup there.
+	 */
+	public static function effective_max_capacity( $service, $location_id ) {
+		if ( $location_id && ! empty( $service['location_capacity_overrides'] ) ) {
+			foreach ( $service['location_capacity_overrides'] as $override ) {
+				if ( (int) $override['location_id'] === (int) $location_id ) {
+					return max( 1, (int) $override['max_capacity'] );
+				}
+			}
+		}
+		return max( 1, (int) $service['max_capacity'] );
 	}
 
 	/* ------------------------------------------------------------------ */

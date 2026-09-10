@@ -149,6 +149,7 @@ class TC_Meta_Boxes {
 	public static function register() {
 		add_meta_box( 'tc_location_details', __( 'Location Details', 'tc-booking' ), array( __CLASS__, 'render_location' ), TC_CPT::LOCATION, 'normal', 'high' );
 		add_meta_box( 'tc_service_details', __( 'Service Details', 'tc-booking' ), array( __CLASS__, 'render_service' ), TC_CPT::SERVICE, 'normal', 'high' );
+		add_meta_box( 'tc_service_capacity_overrides', __( 'Location Capacity Overrides', 'tc-booking' ), array( __CLASS__, 'render_service_capacity_overrides' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_service_extras', __( 'Extras', 'tc-booking' ), array( __CLASS__, 'render_service_extras' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_guide_details', __( 'Guide Details', 'tc-booking' ), array( __CLASS__, 'render_guide' ), TC_CPT::GUIDE, 'normal', 'high' );
 		add_meta_box( 'tc_guide_special_dates', __( 'Special Service Dates', 'tc-booking' ), array( __CLASS__, 'render_guide_special_dates' ), TC_CPT::GUIDE, 'normal', 'default' );
@@ -311,6 +312,55 @@ class TC_Meta_Boxes {
 		<?php
 	}
 
+	/**
+	 * GitHub issue #74 - some locations can only host fewer people than
+	 * others (a smaller venue), so Max capacity above needs to be
+	 * overridable per location rather than one number for every location
+	 * this service is offered at. Same repeater pattern as
+	 * render_service_extras() below (add/remove rows via admin.js, no
+	 * separate save action - submits with the rest of this screen's own
+	 * Update button) - a location with no row here just falls back to the
+	 * service's own Max capacity, via TC_Availability::
+	 * effective_max_capacity().
+	 */
+	public static function render_service_capacity_overrides( $post ) {
+		$overrides = get_post_meta( $post->ID, '_tc_location_capacity_overrides', true );
+		if ( ! is_array( $overrides ) ) {
+			$overrides = array();
+		}
+		$locations = get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+		?>
+		<p class="description"><?php esc_html_e( 'A location with no override here uses this service\'s own Max capacity (set above). Min capacity is not overridden per location.', 'tc-booking' ); ?></p>
+		<div id="tc-capacity-override-rows" data-row-template="tc-capacity-override-row-template">
+			<?php foreach ( $overrides as $i => $override ) : ?>
+				<?php self::render_capacity_override_row( $i, $override, $locations ); ?>
+			<?php endforeach; ?>
+		</div>
+		<p><button type="button" class="button" id="tc-add-capacity-override"><?php esc_html_e( '+ Add location override', 'tc-booking' ); ?></button></p>
+
+		<script type="text/template" id="tc-capacity-override-row-template">
+			<?php self::render_capacity_override_row( '__INDEX__', array(), $locations ); ?>
+		</script>
+		<?php
+	}
+
+	private static function render_capacity_override_row( $index, $override, $locations ) {
+		$location_id = isset( $override['location_id'] ) ? (int) $override['location_id'] : 0;
+		$max         = isset( $override['max_capacity'] ) ? $override['max_capacity'] : '';
+		?>
+		<div class="tc-capacity-override-row">
+			<select name="tc_capacity_overrides[<?php echo esc_attr( $index ); ?>][location_id]" class="tc-capacity-override-location">
+				<option value=""><?php esc_html_e( '— Select a location —', 'tc-booking' ); ?></option>
+				<?php foreach ( $locations as $location ) : ?>
+					<option value="<?php echo esc_attr( $location->ID ); ?>" <?php selected( $location_id, $location->ID ); ?>><?php echo esc_html( $location->post_title ); ?></option>
+				<?php endforeach; ?>
+			</select>
+			<input type="number" step="1" min="1" placeholder="<?php esc_attr_e( 'Max people', 'tc-booking' ); ?>" name="tc_capacity_overrides[<?php echo esc_attr( $index ); ?>][max_capacity]" value="<?php echo esc_attr( $max ); ?>" class="small-text tc-capacity-override-max">
+			<button type="button" class="button-link-delete tc-remove-capacity-override"><?php esc_html_e( 'Remove', 'tc-booking' ); ?></button>
+		</div>
+		<?php
+	}
+
 	public static function render_service_extras( $post ) {
 		$extras = get_post_meta( $post->ID, '_tc_extras', true );
 		if ( ! is_array( $extras ) ) {
@@ -409,6 +459,30 @@ class TC_Meta_Boxes {
 			}
 		}
 		update_post_meta( $post_id, '_tc_extras', $extras );
+
+		// GitHub issue #74 - per-location Max capacity overrides. A blank
+		// location (row left at its placeholder "— Select a location —")
+		// or a non-positive max is skipped, same "drop obviously-empty
+		// leftover rows" rule the extras repeater above already applies.
+		// Duplicate rows for the same location (e.g. added twice by
+		// mistake) aren't de-duplicated here - effective_max_capacity()
+		// only reads the first match, so a duplicate is harmless, just
+		// redundant.
+		$overrides = array();
+		if ( isset( $_POST['tc_capacity_overrides'] ) && is_array( $_POST['tc_capacity_overrides'] ) ) {
+			foreach ( $_POST['tc_capacity_overrides'] as $row ) {
+				$location_id = isset( $row['location_id'] ) ? absint( $row['location_id'] ) : 0;
+				$max         = isset( $row['max_capacity'] ) ? (int) $row['max_capacity'] : 0;
+				if ( ! $location_id || $max <= 0 ) {
+					continue;
+				}
+				$overrides[] = array(
+					'location_id'  => $location_id,
+					'max_capacity' => $max,
+				);
+			}
+		}
+		update_post_meta( $post_id, '_tc_location_capacity_overrides', $overrides );
 	}
 
 	/* ---------------------------------------------------------------- */
@@ -969,7 +1043,9 @@ class TC_Meta_Boxes {
 		// limit_by_seats extra's quantity - then guests, then guide
 		// assignment with the FINAL party_size) - never a forked copy of that
 		// logic, see this method's docblock.
-		$party_size = $service['allow_party'] ? min( $party_size, max( 1, (int) $service['max_capacity'] ) ) : 1;
+		// GitHub issue #74 - capped at this location's own override if it
+		// has one, not just the service's flat global Max capacity.
+		$party_size = $service['allow_party'] ? min( $party_size, TC_Availability::effective_max_capacity( $service, $location_id ) ) : 1;
 
 		$valid_extras = array();
 		$extras_total = 0;
