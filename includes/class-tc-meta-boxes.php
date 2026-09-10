@@ -44,6 +44,14 @@ class TC_Meta_Boxes {
 
 		wp_enqueue_script( 'tc-admin', TC_BOOKING_URL . 'admin/js/admin.js', array( 'jquery' ), TC_BOOKING_VERSION, true );
 
+		// GitHub issue #72 - the "Special service" color field on the
+		// Service edit screen, using WordPress core's own color picker
+		// rather than a plain text/hex input.
+		if ( TC_CPT::SERVICE === $post_type ) {
+			wp_enqueue_style( 'wp-color-picker' );
+			wp_enqueue_script( 'tc-service-color-picker', TC_BOOKING_URL . 'admin/js/service-color-picker.js', array( 'wp-color-picker' ), TC_BOOKING_VERSION, true );
+		}
+
 		// Availability calendar only makes sense once the guide has an ID to
 		// attach it to - 'auto-draft' is the unsaved "Add New Guide" screen.
 		if ( TC_CPT::GUIDE === $post_type && $post && 'auto-draft' !== $post->post_status ) {
@@ -56,6 +64,33 @@ class TC_Meta_Boxes {
 					'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
 					'nonce'    => wp_create_nonce( 'wp_rest' ),
 					'guideId'  => $post->ID,
+				)
+			);
+
+			// GitHub issue #71 - special-service date calendars, one per
+			// (special service, location) the guide has checked above.
+			// Only special services are sent - a plain-service calendar
+			// never applies, and there's no reason to expose the rest of
+			// the catalog to this screen's JS.
+			$special_services = array();
+			foreach ( get_posts( array( 'post_type' => TC_CPT::SERVICE, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) ) as $service_post ) {
+				if ( ! get_post_meta( $service_post->ID, '_tc_is_special', true ) ) {
+					continue;
+				}
+				$special_services[] = array( 'id' => $service_post->ID, 'name' => $service_post->post_title );
+			}
+			$locations = array();
+			foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) ) as $location_post ) {
+				$locations[] = array( 'id' => $location_post->ID, 'name' => $location_post->post_title );
+			}
+			wp_enqueue_script( 'tc-guide-special-dates', TC_BOOKING_URL . 'admin/js/guide-special-dates.js', array(), TC_BOOKING_VERSION, true );
+			wp_localize_script(
+				'tc-guide-special-dates',
+				'tcGuideSpecialDatesAdmin',
+				array(
+					'services'     => $special_services,
+					'locations'    => $locations,
+					'specialDates' => TC_Availability::guide_special_dates( $post->ID ),
 				)
 			);
 		}
@@ -116,6 +151,7 @@ class TC_Meta_Boxes {
 		add_meta_box( 'tc_service_details', __( 'Service Details', 'tc-booking' ), array( __CLASS__, 'render_service' ), TC_CPT::SERVICE, 'normal', 'high' );
 		add_meta_box( 'tc_service_extras', __( 'Extras', 'tc-booking' ), array( __CLASS__, 'render_service_extras' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_guide_details', __( 'Guide Details', 'tc-booking' ), array( __CLASS__, 'render_guide' ), TC_CPT::GUIDE, 'normal', 'high' );
+		add_meta_box( 'tc_guide_special_dates', __( 'Special Service Dates', 'tc-booking' ), array( __CLASS__, 'render_guide_special_dates' ), TC_CPT::GUIDE, 'normal', 'default' );
 		add_meta_box( 'tc_guide_availability', __( 'Availability Calendar', 'tc-booking' ), array( __CLASS__, 'render_guide_availability' ), TC_CPT::GUIDE, 'normal', 'default' );
 		add_meta_box( 'tc_booking_details', __( 'Booking Details', 'tc-booking' ), array( __CLASS__, 'render_booking' ), TC_CPT::BOOKING, 'normal', 'high' );
 	}
@@ -183,6 +219,14 @@ class TC_Meta_Boxes {
 		$max_capacity  = get_post_meta( $post->ID, '_tc_max_capacity', true );
 		$allow_party   = get_post_meta( $post->ID, '_tc_allow_party', true );
 		$shared_seats  = get_post_meta( $post->ID, '_tc_allow_shared_seats', true );
+		$is_special    = get_post_meta( $post->ID, '_tc_is_special', true );
+		$special_color = get_post_meta( $post->ID, '_tc_special_color', true );
+		if ( '' === $special_color ) {
+			// Matches booking-app.css's --limited accent - an already
+			// on-brand "this one's different" tone, rather than picking a
+			// new default color out of nowhere.
+			$special_color = '#A2703A';
+		}
 
 		if ( '' === $duration_days ) {
 			$duration_days = 1;
@@ -246,6 +290,21 @@ class TC_Meta_Boxes {
 						<?php esc_html_e( 'Let the customer bring extra people to this ceremony', 'tc-booking' ); ?>
 					</label>
 					<p class="description"><?php esc_html_e( 'Adds a group-size step to the booking flow (capped at Max capacity above, including the customer themself) and collects each extra person\'s name, email, and phone. The base price is charged per person.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th><?php esc_html_e( 'Special service', 'tc-booking' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" id="tc_is_special" name="tc_is_special" value="1" <?php checked( '1', $is_special ); ?>>
+						<?php esc_html_e( 'This only happens occasionally, not on a regular schedule', 'tc-booking' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'A guide only shows as available for this service on dates they\'ve specifically opted into (set per guide, under Locations/Services on their own Guide edit screen), instead of their regular calendar. Opting into a date also closes that guide\'s regular calendar for that day.', 'tc-booking' ); ?></p>
+					<p style="margin-top:10px;">
+						<label for="tc_special_color"><?php esc_html_e( 'Calendar color', 'tc-booking' ); ?></label><br>
+						<input type="text" id="tc_special_color" name="tc_special_color" value="<?php echo esc_attr( $special_color ); ?>" data-default-color="#A2703A" class="tc-color-picker">
+						<p class="description"><?php esc_html_e( 'Shown on the booking widget\'s calendar for this service\'s open dates, instead of the usual color, so customers can tell it apart at a glance.', 'tc-booking' ); ?></p>
+					</p>
 				</td>
 			</tr>
 		</table>
@@ -326,6 +385,11 @@ class TC_Meta_Boxes {
 
 		update_post_meta( $post_id, '_tc_allow_party', isset( $_POST['tc_allow_party'] ) ? '1' : '' );
 		update_post_meta( $post_id, '_tc_allow_shared_seats', isset( $_POST['tc_allow_shared_seats'] ) ? '1' : '' );
+		update_post_meta( $post_id, '_tc_is_special', isset( $_POST['tc_is_special'] ) ? '1' : '' );
+		if ( isset( $_POST['tc_special_color'] ) ) {
+			$color = sanitize_hex_color( wp_unslash( $_POST['tc_special_color'] ) );
+			update_post_meta( $post_id, '_tc_special_color', $color ? $color : '' );
+		}
 
 		$extras = array();
 		if ( isset( $_POST['tc_extras'] ) && is_array( $_POST['tc_extras'] ) ) {
@@ -401,6 +465,32 @@ class TC_Meta_Boxes {
 	}
 
 	/**
+	 * GitHub issue #71 - "special" services (Service edit screen's own
+	 * "Special service" checkbox - see render_service()) only happen once
+	 * or twice a month, so instead of a regular blocked/available
+	 * calendar, a guide opts into the exact dates they're offering one -
+	 * per location, since the same rare service can happen at a different
+	 * place on a different date. The actual calendar widgets are built by
+	 * admin/js/guide-special-dates.js, which reacts live to the Locations
+	 * covered / Services provided checkboxes above (in render_guide()'s
+	 * own meta box) - only a special service that's both checked there AND
+	 * marked special gets a calendar here, one per location also checked.
+	 */
+	public static function render_guide_special_dates( $post ) {
+		if ( 'auto-draft' === $post->post_status ) {
+			echo '<p>' . esc_html__( 'Save this guide first, then come back here to set special-service dates.', 'tc-booking' ) . '</p>';
+			return;
+		}
+		$error_key = 'tc_guide_special_dates_error_' . get_current_user_id() . '_' . $post->ID;
+		$error     = get_transient( $error_key );
+		if ( $error ) {
+			delete_transient( $error_key );
+			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		}
+		echo '<div id="tc-special-dates-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
+	}
+
+	/**
 	 * Lets an admin view/edit this guide's own-availability calendar
 	 * (wp_tc_guide_availability) without needing to log in as the guide -
 	 * same REST-backed calendar widget the guide dashboard shortcode uses,
@@ -457,7 +547,83 @@ class TC_Meta_Boxes {
 			add_post_meta( $post_id, '_tc_service_ids', TC_WPML::to_default_language_id( $service_id, TC_CPT::SERVICE ) );
 		}
 
+		self::save_guide_special_dates_changes( $post_id, $service_ids, $location_ids );
 		self::save_guide_availability_changes( $post_id );
+	}
+
+	/**
+	 * GitHub issue #71 - see render_guide_special_dates(). Re-validates
+	 * everything server-side rather than trusting admin/js/guide-special-
+	 * dates.js's staged tc_special_dates[SERVICE][LOCATION][]=DATE fields
+	 * as-is: a service/location must actually be one this guide is linked
+	 * to (the $service_ids/$location_ids just saved above, not whatever
+	 * the client posted before that), and the service must actually be
+	 * marked special right now - both could be stale if changed
+	 * elsewhere between page load and clicking Update.
+	 *
+	 * A date already removed from the posted set but with a real booking
+	 * against it is kept rather than dropped - same "can't un-offer an
+	 * already-booked date" rule save_guide_availability_changes() applies
+	 * to the regular calendar, and for the same reason: the booking itself
+	 * isn't touched by this, so silently dropping its date here would
+	 * leave that date impossible to see/re-add later while it's still owed
+	 * to a real customer.
+	 */
+	private static function save_guide_special_dates_changes( $post_id, $service_ids, $location_ids ) {
+		$posted = isset( $_POST['tc_special_dates'] ) && is_array( $_POST['tc_special_dates'] ) ? wp_unslash( $_POST['tc_special_dates'] ) : array();
+
+		$rows = array();
+		foreach ( $posted as $service_id => $by_location ) {
+			$service_id = absint( $service_id );
+			if ( ! in_array( $service_id, $service_ids, true ) || ! is_array( $by_location ) ) {
+				continue;
+			}
+			$service = TC_Availability::get_service_data( $service_id );
+			if ( ! $service || empty( $service['is_special'] ) ) {
+				continue;
+			}
+			foreach ( $by_location as $location_id => $dates ) {
+				$location_id = absint( $location_id );
+				if ( ! in_array( $location_id, $location_ids, true ) || ! is_array( $dates ) ) {
+					continue;
+				}
+				foreach ( $dates as $date ) {
+					$date = sanitize_text_field( $date );
+					if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+						continue;
+					}
+					$rows[] = array(
+						'service_id'  => $service_id,
+						'location_id' => $location_id,
+						'date'        => $date,
+					);
+				}
+			}
+		}
+
+		$new_keys = array();
+		foreach ( $rows as $row ) {
+			$new_keys[ $row['service_id'] . ':' . $row['location_id'] . ':' . $row['date'] ] = true;
+		}
+
+		$errors = array();
+		foreach ( TC_Availability::guide_special_dates( $post_id ) as $old ) {
+			$key = $old['service_id'] . ':' . $old['location_id'] . ':' . $old['date'];
+			if ( isset( $new_keys[ $key ] ) ) {
+				continue; // Still present, nothing to do.
+			}
+			if ( TC_Availability::guide_has_booking_on( $post_id, $old['date'] ) ) {
+				$rows[]     = $old;
+				/* translators: %s: date (YYYY-MM-DD) */
+				$errors[]   = sprintf( __( '%s already has a booking and could not be removed as a special date.', 'tc-booking' ), $old['date'] );
+			}
+		}
+
+		update_post_meta( $post_id, '_tc_special_dates', $rows );
+
+		if ( $errors ) {
+			set_transient( 'tc_guide_special_dates_error_' . get_current_user_id() . '_' . $post_id, implode( ' ', $errors ), 60 );
+		}
 	}
 
 	/**

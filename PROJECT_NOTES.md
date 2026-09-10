@@ -1257,6 +1257,105 @@ dead code. This is customer-facing only - the guide/admin's own calendar
 (`.tc-cal-day`, a different set of classes entirely) still shows real
 booked/limited status, since staff still need to see it.
 
+## Special services (GitHub issues #71/#72)
+
+Some services ("only happened once or twice per month") don't fit the
+regular blocked/available guide calendar at all - a guide should only
+ever look "open" for one of these on a date they've specifically agreed
+to do it, at one specific location, not by the usual
+blocked-row/booking-conflict rules everything else uses.
+
+**Data model.** A Service gets two new fields (Service edit screen,
+`render_service()`/`save_service()` in `class-tc-meta-boxes.php`): "Special
+service" (`_tc_is_special`, a checkbox) and a calendar color
+(`_tc_special_color`, WordPress core's own `wp-color-picker`, defaulting
+to booking-app.css's existing `--limited` amber rather than inventing a
+new default color). `TC_Availability::get_service_data()` exposes both.
+
+A Guide gets a new `_tc_special_dates` meta value - a flat array of
+`{service_id, location_id, date}` rows, one per date they've opted into
+offering one special service at one location (not a separate DB table -
+this is small, admin-managed data, matching how `_tc_selected_extras`
+etc. already store an array in one meta row rather than one row per
+entry). New meta box "Special Service Dates" (`render_guide_special_
+dates()`), between Guide Details and the regular Availability Calendar,
+renders one calendar per (special service, location) pair - but only for
+services/locations already checked in the SAME screen's existing
+"Services provided"/"Locations covered" lists in Guide Details, which a
+guide must set up first. `admin/js/guide-special-dates.js` builds these
+live, reacting to those checkboxes changing without a page reload (a
+`change` listener on `tc_service_ids[]`/`tc_location_ids[]`, both of
+which live in a different meta box on the same page - meta boxes are
+just sections of one `<form>`, so this works fine across box
+boundaries). Same staged-changes model as `guide-availability.js`
+(GitHub issue from earlier - dropped AJAX auto-save entirely): clicking a
+date only updates local state and re-renders hidden `tc_special_dates
+[SERVICE][LOCATION][]=DATE` inputs, submitted and applied by the guide's
+own Update button, not any separate save action. Re-validated server-side
+in `save_guide_special_dates_changes()` exactly like the regular
+calendar's save path - a service/location must actually be one this
+guide is linked to (from the very same request, not stale stored meta),
+the service must currently be marked special, and a date already removed
+from what's posted but with a real booking against it is kept rather
+than silently dropped (the booking itself isn't touched, so losing the
+date here would make it impossible to see/re-add while still owed to a
+customer).
+
+**Availability engine.** `TC_Availability::guide_available_on()` (private,
+the single "is this guide free on this date" check every other method in
+the file goes through) grew a `$location_id` parameter, threaded down
+from `get_grid()`/`is_bookable()`/`pick_guide()` (all of which already
+had it) via `get_date_status_and_remaining()`/`get_date_status()`/
+`guide_is_free()`. Its logic branches on `$service['is_special']`:
+- **Special service**: available only if `guide_offers_special_on()`
+  finds a matching `{service_id, location_id, date}` row - the guide's
+  regular blocked-calendar rows still apply (an explicit day off is a day
+  off from everything), but the normal any-service booking-conflict check
+  is still evaluated after this (a guide can't be double-booked into a
+  special service either).
+- **Regular service**: unavailable if `guide_has_special_date_on()` finds
+  ANY special-date row for the guide that day, regardless of which
+  service/location - opting into a special date closes that guide's
+  regular calendar for the whole day, per the issue: "once he selected
+  those dates ... other normal services wont be available on that day."
+  Not location-scoped, matching how a guide's real bookings already block
+  them everywhere, not just at one location (see the "one guide, two
+  locations" question answered earlier in this file/session).
+
+`get_guides_for()` itself is untouched - a guide must still be linked to
+the service+location via the regular "Services provided"/"Locations
+covered" checkboxes before special dates for that combination mean
+anything, so the existing candidate-guide query is still the right first
+filter either way.
+
+**Booking flow and color.** No changes needed in `create_booking()`/
+`save_new_booking()` (admin manual entry) - both already route through
+`is_bookable()`/`pick_guide()`, so special-service correctness came for
+free once the engine itself understood it. `TC_Rest_Api::get_services()`
+now includes `is_special`/`special_color` in its response (that endpoint
+builds its own response array rather than passing `get_service_data()`'s
+array straight through, so this needed an explicit addition, not just
+the engine change). `public/js/booking-app.js`'s
+`renderAvailabilityCalendar()` uses `special_color` as an inline style
+override (a ~10%-alpha tint for the cell background, the full color for
+text/the legend swatch) on open days when the service is special, falling
+back to the normal `--available` CSS variable otherwise - purely
+cosmetic, no effect on what's actually bookable.
+
+Verified with a standalone PHP harness (stubbed `$wpdb`/`get_post_meta`,
+Reflection to call the private `guide_available_on()` directly) covering
+both branches - a guide with no special dates is closed for the special
+service and open normally; a guide who opted into one date at one
+location is open for the special service there (and only there), and
+closed for every regular service that whole day, everywhere, while an
+unrelated date is unaffected. Also verified the admin calendar widget and
+the customer-facing color rendering with actual browser previews (not
+just code review) - the same category of bug the email charset issue
+caught earlier in this file would otherwise slip through: the new
+`#tc-special-dates-root` wrapper had to be added to booking-app.css's
+CSS-variable-scope selector list (like `#tc-account-dashboard-root`
+before it) or the calendar rendered with no color/styling at all.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

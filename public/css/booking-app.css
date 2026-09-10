@@ -1,5 +1,5 @@
 /* TC Booking - front-end styles. Ported from the approved prototype. */
-#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root, #tc-account-dashboard-root {
+#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root, #tc-account-dashboard-root, #tc-special-dates-root {
   /* GitHub issue #22 - brand accent (buttons, progress bar, selection
      borders/focus, map pins) switched from green to purple, and the warm
      brown/cream neutrals lightened toward white - to match Truffle
@@ -43,7 +43,7 @@
   color: var(--ink);
   line-height: 1.55;
 }
-#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root *, #tc-account-dashboard-root * { box-sizing: border-box; }
+#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root *, #tc-account-dashboard-root *, #tc-special-dates-root * { box-sizing: border-box; }
 
 /* GitHub issue #69 - booking summary on the WooCommerce pay-for-order
    page, reusing .tc-card/.tc-title/.tc-rline from the review step so it

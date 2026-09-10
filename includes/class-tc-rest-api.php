@@ -295,6 +295,14 @@ class TC_Rest_Api {
 				'max_capacity'  => $service['max_capacity'],
 				'allow_party'   => $service['allow_party'],
 				'extras'        => $extras,
+				// GitHub issues #71/#72 - lets the booking widget's
+				// availability calendar render this service's own color
+				// instead of the usual one, so customers can tell a
+				// "special" (occasional, non-regular) service apart at a
+				// glance. Purely cosmetic - the actual open/closed logic
+				// for special services lives in TC_Availability, not here.
+				'is_special'    => $service['is_special'],
+				'special_color' => $service['special_color'],
 			);
 		}
 		return rest_ensure_response( $data );

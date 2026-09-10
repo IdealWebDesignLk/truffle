@@ -42,7 +42,7 @@ class TC_Availability {
 
 		while ( $cursor <= $end ) {
 			$date_str      = $cursor->format( 'Y-m-d' );
-			$status_remain = self::get_date_status_and_remaining( $service, $guide_ids, $date_str );
+			$status_remain = self::get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id );
 			$grid[]        = array(
 				'date'      => $date_str,
 				'status'    => $status_remain['status'],
@@ -66,7 +66,7 @@ class TC_Availability {
 		if ( ! $service || empty( $guide_ids ) ) {
 			return false;
 		}
-		return 'off' !== self::get_date_status( $service, $guide_ids, $date_str );
+		return 'off' !== self::get_date_status( $service, $guide_ids, $date_str, $location_id );
 	}
 
 	/**
@@ -99,7 +99,7 @@ class TC_Availability {
 		$party_size   = max( 1, (int) $party_size );
 
 		foreach ( $guide_ids as $guide_id ) {
-			if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
+			if ( ! self::guide_available_on( $guide_id, $service, $date_str, $location_id ) ) {
 				continue;
 			}
 			if ( $exclusive ) {
@@ -131,8 +131,8 @@ class TC_Availability {
 		return 1 === $max_capacity || empty( $service['allow_shared_seats'] );
 	}
 
-	private static function get_date_status( $service, $guide_ids, $date_str ) {
-		return self::get_date_status_and_remaining( $service, $guide_ids, $date_str )['status'];
+	private static function get_date_status( $service, $guide_ids, $date_str, $location_id = 0 ) {
+		return self::get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id )['status'];
 	}
 
 	/**
@@ -150,14 +150,14 @@ class TC_Availability {
 	 *
 	 * @return array{status:string,remaining:?int}
 	 */
-	private static function get_date_status_and_remaining( $service, $guide_ids, $date_str ) {
+	private static function get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id = 0 ) {
 		if ( empty( $guide_ids ) ) {
 			return array( 'status' => 'off', 'remaining' => null );
 		}
 
 		if ( self::is_exclusive( $service ) ) {
 			foreach ( $guide_ids as $guide_id ) {
-				if ( self::guide_is_free( $guide_id, $service, $date_str ) ) {
+				if ( self::guide_is_free( $guide_id, $service, $date_str, $location_id ) ) {
 					return array( 'status' => 'available', 'remaining' => null );
 				}
 			}
@@ -170,7 +170,7 @@ class TC_Availability {
 		// whether ANY covering guide has room).
 		$max_capacity = max( 1, (int) $service['max_capacity'] );
 		foreach ( $guide_ids as $guide_id ) {
-			if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
+			if ( ! self::guide_available_on( $guide_id, $service, $date_str, $location_id ) ) {
 				continue;
 			}
 			$used      = self::get_party_size_booked( $guide_id, $service['id'], $date_str );
@@ -185,8 +185,8 @@ class TC_Availability {
 		return array( 'status' => 'off', 'remaining' => 0 );
 	}
 
-	private static function guide_is_free( $guide_id, $service, $date_str ) {
-		if ( ! self::guide_available_on( $guide_id, $service, $date_str ) ) {
+	private static function guide_is_free( $guide_id, $service, $date_str, $location_id = 0 ) {
+		if ( ! self::guide_available_on( $guide_id, $service, $date_str, $location_id ) ) {
 			return false;
 		}
 		return 0 === self::get_party_size_booked( $guide_id, $service['id'], $date_str );
@@ -197,8 +197,14 @@ class TC_Availability {
 	 * booking (of any service) whose span overlaps this service's span
 	 * starting on $date_str. Multi-day services (duration_days > 1) block
 	 * every day in their span, not just the start date.
+	 *
+	 * $location_id only matters for special services (GitHub issue #71) -
+	 * see the special-dates check below. Regular services don't need it
+	 * here at all (a regular booking already blocks a guide everywhere,
+	 * not just at one location - see the file-level comment on
+	 * get_guides_for() about this deliberately not being location-scoped).
 	 */
-	private static function guide_available_on( $guide_id, $service, $date_str ) {
+	private static function guide_available_on( $guide_id, $service, $date_str, $location_id = 0 ) {
 		global $wpdb;
 
 		$duration = max( 1, (int) $service['duration_days'] );
@@ -222,6 +228,25 @@ class TC_Availability {
 			if ( 'blocked' === $row->status ) {
 				return false;
 			}
+		}
+
+		// 1b. Special services (GitHub issue #71) - a guide is only
+		// "available" for a special service on dates they've explicitly
+		// opted into offering it, at this exact location (see
+		// guide_offers_special_on() - special dates are recorded per
+		// service+location, since the same rare service can happen at
+		// different locations on different dates). The reverse also
+		// applies: opting into a special date at all (any location) takes
+		// the guide off the board for every OTHER, regular service that
+		// same day, even before anyone's actually booked it - "once he
+		// selected those dates ... other normal services wont be
+		// available on that day," per the same issue.
+		if ( ! empty( $service['is_special'] ) ) {
+			if ( ! self::guide_offers_special_on( $guide_id, $service['id'], $location_id, $date_str ) ) {
+				return false;
+			}
+		} elseif ( self::guide_has_special_date_on( $guide_id, $date_str ) ) {
+			return false;
 		}
 
 		// 2. Existing bookings for this guide that overlap the span, across
@@ -282,6 +307,50 @@ class TC_Availability {
 		}
 
 		return true;
+	}
+
+	/**
+	 * A guide's full special-dates roster - each entry
+	 * {service_id:int, location_id:int, date:'Y-m-d'} records one date
+	 * they've opted into offering one special service at one location.
+	 * One flat post meta value (matches how _tc_selected_extras etc. store
+	 * an array, not one meta row per entry) rather than a new DB table -
+	 * this is small, admin-managed data, not something queried across all
+	 * guides the way bookings/regular availability rows are.
+	 *
+	 * Public since TC_Meta_Boxes reads/writes this too (rendering and
+	 * saving the Guide edit screen's special-dates calendars).
+	 */
+	public static function guide_special_dates( $guide_id ) {
+		$rows = get_post_meta( $guide_id, '_tc_special_dates', true );
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	private static function guide_offers_special_on( $guide_id, $service_id, $location_id, $date_str ) {
+		foreach ( self::guide_special_dates( $guide_id ) as $row ) {
+			if ( (int) $row['service_id'] === (int) $service_id
+				&& (int) $row['location_id'] === (int) $location_id
+				&& $row['date'] === $date_str
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Any special date at all, regardless of which service/location -
+	 * used to close a guide's REGULAR availability on a day they've
+	 * committed to a special service somewhere. See the matching comment
+	 * in guide_available_on().
+	 */
+	private static function guide_has_special_date_on( $guide_id, $date_str ) {
+		foreach ( self::guide_special_dates( $guide_id ) as $row ) {
+			if ( $row['date'] === $date_str ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static function get_party_size_booked( $guide_id, $service_id, $date_str ) {
@@ -378,6 +447,15 @@ class TC_Availability {
 			'allow_party'        => (bool) get_post_meta( $service_id, '_tc_allow_party', true ),
 			'allow_shared_seats' => (bool) get_post_meta( $service_id, '_tc_allow_shared_seats', true ),
 			'extras'             => is_array( $extras ) ? $extras : array(),
+			// GitHub issues #71/#72 - a "special service" (happens once or
+			// twice a month, e.g.) only opens on dates a guide has
+			// explicitly opted into offering it, rather than the normal
+			// blocked/booked-conflict calendar - see guide_available_on().
+			// special_color is purely cosmetic (the booking widget's
+			// calendar), defaulting to '' so the front-end falls back to
+			// its normal --available color rather than an empty swatch.
+			'is_special'         => (bool) get_post_meta( $service_id, '_tc_is_special', true ),
+			'special_color'      => (string) get_post_meta( $service_id, '_tc_special_color', true ),
 		);
 	}
 

@@ -599,6 +599,12 @@
 		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
 		var daysInMo  = bounds.last.getDate();
 		var today     = nlToday();
+		// GitHub issue #72 - a "special" (occasional, non-regular) service
+		// can use its own calendar color instead of the usual green, so
+		// customers can tell it apart at a glance. '' falls back to the
+		// normal --available/--available-bg CSS variables untouched.
+		var specialColor = ( service.is_special && service.special_color ) ? service.special_color : '';
+		var swatchStyle  = specialColor ? ( 'background:' + specialColor ) : 'background:var(--available)';
 
 		var cells = '';
 		for ( var i = 0; i < firstDow; i++ ) {
@@ -621,7 +627,9 @@
 			var cls       = isPast ? 'past' : displayStatus;
 			if ( iso === state.date ) cls += ' selected';
 			var label = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
-			cells += '<div class="tc-avail-day ' + cls + '"' + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
+			var dayStyle = ( specialColor && ! isPast && 'available' === displayStatus )
+				? ' style="background:' + escapeHtml( specialColor ) + '19;color:' + escapeHtml( specialColor ) + ';"' : '';
+			cells += '<div class="tc-avail-day ' + cls + '"' + dayStyle + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
 				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + '</div>';
 		}
 
@@ -634,7 +642,7 @@
 				'<div class="tc-avail-cal">' +
 				dowLabels().map( function ( l ) { return '<div class="tc-avail-dow">' + escapeHtml( l ) + '</div>'; } ).join( '' ) +
 				cells + '</div>' ) +
-			'<div class="tc-legend"><span><span class="tc-swatch" style="background:var(--available)"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
+			'<div class="tc-legend"><span><span class="tc-swatch" style="' + swatchStyle + '"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>' + escapeHtml( I18N.legendNotAvailable ) + '</span></div>';
 	}
 
