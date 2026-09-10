@@ -329,6 +329,37 @@ class TC_Availability {
 		return is_array( $rows ) ? $rows : array();
 	}
 
+	/**
+	 * Adds or removes a single {service_id, location_id, date} entry from
+	 * a guide's special-dates roster - a read-modify-write against the one
+	 * meta value guide_special_dates() reads, since this is a single-entry
+	 * toggle (the guide dashboard's own REST routes - TC_Rest_Api::
+	 * guide_save_special_dates_bulk()) rather than the wp-admin screen's
+	 * "replace this whole (service,location) sublist with what was just
+	 * posted" (TC_Meta_Boxes::save_guide_special_dates_changes()).
+	 */
+	public static function set_guide_special_date( $guide_id, $service_id, $location_id, $date, $offered ) {
+		$rows     = array();
+		$existing = self::guide_special_dates( $guide_id );
+		foreach ( $existing as $row ) {
+			if ( (int) $row['service_id'] === (int) $service_id
+				&& (int) $row['location_id'] === (int) $location_id
+				&& $row['date'] === $date
+			) {
+				continue; // Dropped here - re-added below if $offered.
+			}
+			$rows[] = $row;
+		}
+		if ( $offered ) {
+			$rows[] = array(
+				'service_id'  => (int) $service_id,
+				'location_id' => (int) $location_id,
+				'date'        => $date,
+			);
+		}
+		update_post_meta( $guide_id, '_tc_special_dates', $rows );
+	}
+
 	private static function guide_offers_special_on( $guide_id, $service_id, $location_id, $date_str ) {
 		foreach ( self::guide_special_dates( $guide_id ) as $row ) {
 			if ( (int) $row['service_id'] === (int) $service_id

@@ -1494,6 +1494,51 @@ service's own `specialLocations` (sent per-service in the
 with a browser preview: a service restricted to one location produces
 exactly one tab even when the guide covers two.
 
+## Guides can manage special-service dates from their own dashboard too
+
+Special-service dates were wp-admin only - a guide had to ask an admin to
+set them. `public/js/guide-dashboard.js` now gets the same tabbed layout
+`admin/js/guide-calendars.js` already has ("Beschikbaarheid" always
+first, one tab per special service/location the guide is set up for),
+with one real difference in how it's driven: the admin screen reacts to
+live-editable Locations covered/Services provided checkboxes elsewhere
+on the same page, but a guide's own linked services/locations are
+admin-configured and fixed for a given page load, so there's nothing to
+react to - the tab list is just whatever a new endpoint,
+`GET /guide/special-dates` (`TC_Rest_Api::guide_get_special_dates()`),
+returns: every (service, location) pair this guide is actually linked to
+that's both marked special and allowed at that location (reusing
+`TC_Availability::special_location_allowed()`, same as everywhere else
+this gets checked), plus their already-offered dates.
+
+Saving needed a genuinely new mechanism, not just reuse of the wp-admin
+path - there's no post-edit `<form>`/Update button on the front-end
+dashboard to stage hidden inputs into. `POST /guide/special-dates/bulk`
+(`guide_save_special_dates_bulk()`) takes a diff - `{serviceId,
+locationId, date, offered}` per changed date - rather than the admin
+route's "replace this whole (service,location) sublist," applied one
+entry at a time via a new `TC_Availability::set_guide_special_date()`
+(add or remove a single `_tc_special_dates` row), since the front-end
+naturally tracks per-date toggles, not a full list to resubmit. Every
+change is still independently re-validated exactly like
+`guide_get_special_dates()` computes what's allowed in the first place
+(the client's own list could be stale by Save time) and, for removing an
+already-offered date, protected the same way the wp-admin path protects
+it - can't un-offer a date that already has a real booking.
+
+The front-end's existing "stage locally, one explicit Save button, no
+auto-save" model (from the original "sometimes it saves, sometimes it
+doesn't" fix) now covers BOTH tabs from one click: `saveChanges()`
+gathers dirty entries across the availability calendar AND every special
+widget, fires both bulk endpoints (only whichever actually has changes),
+and reconciles per-item results the same partial-success way
+`guide_save_availability_bulk()` already did - one date that failed
+doesn't revert everything else that succeeded. Verified end-to-end with
+a mocked-fetch browser harness: toggling a date on each tab, one Save
+click producing exactly the two expected POST bodies, and both tabs
+showing the change as committed (solid color, no dashed "unsaved"
+outline) afterward.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

@@ -153,6 +153,34 @@ class TC_Rest_Api {
 			)
 		);
 
+		// GitHub follow-up to issue #71 - special-service dates used to be
+		// admin-only (set on a guide's own wp-admin edit screen); guides can
+		// now manage these themselves from the front-end dashboard too, same
+		// staged-changes/explicit-Save model as the availability routes
+		// above. See public/js/guide-dashboard.js and
+		// TC_Meta_Boxes::save_guide_special_dates_changes() for the
+		// wp-admin equivalent this mirrors the validation of.
+		register_rest_route(
+			self::NAMESPACE_,
+			'/guide/special-dates',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( __CLASS__, 'guide_get_special_dates' ),
+					'permission_callback' => array( __CLASS__, 'require_guide' ),
+				),
+			)
+		);
+		register_rest_route(
+			self::NAMESPACE_,
+			'/guide/special-dates/bulk',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'guide_save_special_dates_bulk' ),
+				'permission_callback' => array( __CLASS__, 'require_guide' ),
+			)
+		);
+
 		// --- Admin: view a guide's calendar on their behalf ------------
 		// GitHub feedback - this used to also have a POST route saving one
 		// date per tap via AJAX, same as the guide's own calendar above,
@@ -803,6 +831,106 @@ class TC_Rest_Api {
 
 			TC_Availability::upsert_guide_availability( $guide->ID, $date, $status );
 			$results[] = array( 'date' => $date, 'success' => true );
+		}
+
+		return rest_ensure_response( array( 'results' => $results ) );
+	}
+
+	/**
+	 * The special-service (service, location) pairs THIS guide can set
+	 * dates for, plus what they've already offered - everything
+	 * public/js/guide-dashboard.js needs to build its special-service
+	 * tabs. Unlike the wp-admin equivalent (admin/js/guide-calendars.js),
+	 * there are no live-editable "Locations covered"/"Services provided"
+	 * checkboxes here for the client to react to - a guide's own linked
+	 * services/locations are admin-configured and fixed for this request,
+	 * so the full, final pair list is just computed once, server-side.
+	 */
+	public static function guide_get_special_dates( WP_REST_Request $request ) {
+		$guide              = self::get_guide_post_for_current_user();
+		$guide_service_ids  = array_map( 'intval', get_post_meta( $guide->ID, '_tc_service_ids', false ) );
+		$guide_location_ids = array_map( 'intval', get_post_meta( $guide->ID, '_tc_location_ids', false ) );
+
+		$location_names = array();
+		foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1 ) ) as $location_post ) {
+			$location_names[ $location_post->ID ] = $location_post->post_title;
+		}
+
+		$pairs = array();
+		foreach ( $guide_service_ids as $service_id ) {
+			$service = TC_Availability::get_service_data( $service_id );
+			if ( ! $service || empty( $service['is_special'] ) ) {
+				continue;
+			}
+			foreach ( $guide_location_ids as $location_id ) {
+				if ( ! isset( $location_names[ $location_id ] ) || ! TC_Availability::special_location_allowed( $service, $location_id ) ) {
+					continue;
+				}
+				$pairs[] = array(
+					'serviceId'    => $service_id,
+					'serviceName'  => $service['name'],
+					'locationId'   => $location_id,
+					'locationName' => $location_names[ $location_id ],
+				);
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'pairs'        => $pairs,
+				'specialDates' => TC_Availability::guide_special_dates( $guide->ID ),
+			)
+		);
+	}
+
+	/**
+	 * $params['changes'] is an array of {serviceId, locationId, date,
+	 * offered}, one per date the guide toggled on/off since their last
+	 * save - see public/js/guide-dashboard.js. Every change is
+	 * independently re-validated exactly like guide_get_special_dates()
+	 * computes what's allowed (the client's own pair list could be stale
+	 * by the time Save is clicked - a service/location link changed
+	 * elsewhere in the meantime) and, for un-offering a date, like
+	 * TC_Meta_Boxes::save_guide_special_dates_changes() protects an
+	 * already-booked date from being silently dropped.
+	 */
+	public static function guide_save_special_dates_bulk( WP_REST_Request $request ) {
+		$guide              = self::get_guide_post_for_current_user();
+		$guide_service_ids  = array_map( 'intval', get_post_meta( $guide->ID, '_tc_service_ids', false ) );
+		$guide_location_ids = array_map( 'intval', get_post_meta( $guide->ID, '_tc_location_ids', false ) );
+		$params             = $request->get_json_params();
+		$changes            = isset( $params['changes'] ) && is_array( $params['changes'] ) ? $params['changes'] : array();
+
+		$results = array();
+		foreach ( $changes as $change ) {
+			$service_id  = isset( $change['serviceId'] ) ? absint( $change['serviceId'] ) : 0;
+			$location_id = isset( $change['locationId'] ) ? absint( $change['locationId'] ) : 0;
+			$date        = self::sanitize_date( $change['date'] ?? '' );
+			$offered     = ! empty( $change['offered'] );
+			$result      = array( 'serviceId' => $service_id, 'locationId' => $location_id, 'date' => $change['date'] ?? '', 'offered' => $offered );
+
+			if ( ! $service_id || ! $location_id || ! $date ) {
+				$results[] = $result + array( 'success' => false, 'message' => __( 'Ongeldige gegevens.', 'tc-booking' ) );
+				continue;
+			}
+
+			$service = TC_Availability::get_service_data( $service_id );
+			if ( ! $service || empty( $service['is_special'] )
+				|| ! in_array( $service_id, $guide_service_ids, true )
+				|| ! in_array( $location_id, $guide_location_ids, true )
+				|| ! TC_Availability::special_location_allowed( $service, $location_id )
+			) {
+				$results[] = $result + array( 'success' => false, 'message' => __( 'Deze dienst is niet beschikbaar voor jou op deze locatie.', 'tc-booking' ) );
+				continue;
+			}
+
+			if ( ! $offered && TC_Availability::guide_has_booking_on( $guide->ID, $date ) ) {
+				$results[] = $result + array( 'success' => false, 'message' => __( 'Er is al een boeking op deze datum en kan niet worden verwijderd.', 'tc-booking' ) );
+				continue;
+			}
+
+			TC_Availability::set_guide_special_date( $guide->ID, $service_id, $location_id, $date, $offered );
+			$results[] = $result + array( 'success' => true );
 		}
 
 		return rest_ensure_response( array( 'results' => $results ) );
