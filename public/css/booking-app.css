@@ -1,5 +1,5 @@
 /* TC Booking - front-end styles. Ported from the approved prototype. */
-#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-availability-root, #tc-reschedule-modal-root, #tc-checkout-summary-root, #tc-account-dashboard-root, #tc-special-dates-root {
+#tc-booking-root, #tc-guide-dashboard-root, #tc-guide-calendar-root, #tc-reschedule-modal-root, #tc-checkout-summary-root, #tc-account-dashboard-root {
   /* GitHub issue #22 - brand accent (buttons, progress bar, selection
      borders/focus, map pins) switched from green to purple, and the warm
      brown/cream neutrals lightened toward white - to match Truffle
@@ -43,7 +43,7 @@
   color: var(--ink);
   line-height: 1.55;
 }
-#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-availability-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root *, #tc-account-dashboard-root *, #tc-special-dates-root * { box-sizing: border-box; }
+#tc-booking-root *, #tc-guide-dashboard-root *, #tc-guide-calendar-root *, #tc-reschedule-modal-root *, #tc-checkout-summary-root *, #tc-account-dashboard-root * { box-sizing: border-box; }
 
 /* GitHub issue #69 - booking summary on the WooCommerce pay-for-order
    page, reusing .tc-card/.tc-title/.tc-rline from the review step so it
@@ -389,6 +389,15 @@
 @media (max-width: 600px) {
 	.tc-cal-status { left: 16px; right: 16px; bottom: 16px; text-align: center; }
 }
+
+/* Guide edit screen's "Calendar" meta box (admin/js/guide-calendars.js) -
+   one tab per calendar (the regular one, plus one per special service the
+   guide has opted into a location for) instead of stacking every calendar
+   open on the page at once. */
+.tc-cal-tabbar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.tc-cal-tab { border: none; background: none; padding: 9px 14px; font-size: 13px; font-weight: 500; color: var(--ink-soft); cursor: pointer; border-radius: 8px 8px 0 0; margin-bottom: -1px; }
+.tc-cal-tab:hover { color: var(--ink); background: var(--surface-dim); }
+.tc-cal-tab.active { color: var(--brand-deep); background: var(--brand-bg); border-bottom: 2px solid var(--brand-deep); font-weight: 600; }
 
 /* Front-end guide dashboard only (not the admin edit-a-guide's-calendar
    screen, which lives inside wp-admin's own page chrome) - vertical

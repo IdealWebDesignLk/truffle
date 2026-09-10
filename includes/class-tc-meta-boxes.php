@@ -52,13 +52,18 @@ class TC_Meta_Boxes {
 			wp_enqueue_script( 'tc-service-color-picker', TC_BOOKING_URL . 'admin/js/service-color-picker.js', array( 'wp-color-picker' ), TC_BOOKING_VERSION, true );
 		}
 
-		// Availability calendar only makes sense once the guide has an ID to
-		// attach it to - 'auto-draft' is the unsaved "Add New Guide" screen.
+		// Calendar tabs only make sense once the guide has an ID to attach
+		// them to - 'auto-draft' is the unsaved "Add New Guide" screen.
+		// One script, admin/js/guide-calendars.js, now builds both the
+		// regular availability tab and the special-dates tabs (previously
+		// two separate scripts/meta boxes - GitHub feedback: stacking every
+		// calendar open at once got unwieldy) - both localized payloads
+		// below attach to that same handle.
 		if ( TC_CPT::GUIDE === $post_type && $post && 'auto-draft' !== $post->post_status ) {
 			wp_enqueue_style( 'tc-guide-availability', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
-			wp_enqueue_script( 'tc-guide-availability', TC_BOOKING_URL . 'admin/js/guide-availability.js', array(), TC_BOOKING_VERSION, true );
+			wp_enqueue_script( 'tc-guide-calendars', TC_BOOKING_URL . 'admin/js/guide-calendars.js', array(), TC_BOOKING_VERSION, true );
 			wp_localize_script(
-				'tc-guide-availability',
+				'tc-guide-calendars',
 				'tcGuideAvailabilityAdmin',
 				array(
 					'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
@@ -83,9 +88,8 @@ class TC_Meta_Boxes {
 			foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) ) as $location_post ) {
 				$locations[] = array( 'id' => $location_post->ID, 'name' => $location_post->post_title );
 			}
-			wp_enqueue_script( 'tc-guide-special-dates', TC_BOOKING_URL . 'admin/js/guide-special-dates.js', array(), TC_BOOKING_VERSION, true );
 			wp_localize_script(
-				'tc-guide-special-dates',
+				'tc-guide-calendars',
 				'tcGuideSpecialDatesAdmin',
 				array(
 					'services'     => $special_services,
@@ -152,8 +156,7 @@ class TC_Meta_Boxes {
 		add_meta_box( 'tc_service_capacity_overrides', __( 'Location Capacity Overrides', 'tc-booking' ), array( __CLASS__, 'render_service_capacity_overrides' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_service_extras', __( 'Extras', 'tc-booking' ), array( __CLASS__, 'render_service_extras' ), TC_CPT::SERVICE, 'normal', 'default' );
 		add_meta_box( 'tc_guide_details', __( 'Guide Details', 'tc-booking' ), array( __CLASS__, 'render_guide' ), TC_CPT::GUIDE, 'normal', 'high' );
-		add_meta_box( 'tc_guide_special_dates', __( 'Special Service Dates', 'tc-booking' ), array( __CLASS__, 'render_guide_special_dates' ), TC_CPT::GUIDE, 'normal', 'default' );
-		add_meta_box( 'tc_guide_availability', __( 'Availability Calendar', 'tc-booking' ), array( __CLASS__, 'render_guide_availability' ), TC_CPT::GUIDE, 'normal', 'default' );
+		add_meta_box( 'tc_guide_calendars', __( 'Calendar', 'tc-booking' ), array( __CLASS__, 'render_guide_calendars' ), TC_CPT::GUIDE, 'normal', 'default' );
 		add_meta_box( 'tc_booking_details', __( 'Booking Details', 'tc-booking' ), array( __CLASS__, 'render_booking' ), TC_CPT::BOOKING, 'normal', 'high' );
 	}
 
@@ -539,49 +542,34 @@ class TC_Meta_Boxes {
 	}
 
 	/**
-	 * GitHub issue #71 - "special" services (Service edit screen's own
-	 * "Special service" checkbox - see render_service()) only happen once
-	 * or twice a month, so instead of a regular blocked/available
-	 * calendar, a guide opts into the exact dates they're offering one -
-	 * per location, since the same rare service can happen at a different
-	 * place on a different date. The actual calendar widgets are built by
-	 * admin/js/guide-special-dates.js, which reacts live to the Locations
-	 * covered / Services provided checkboxes above (in render_guide()'s
-	 * own meta box) - only a special service that's both checked there AND
-	 * marked special gets a calendar here, one per location also checked.
+	 * One tabbed meta box replacing what used to be two separate ones
+	 * (Availability Calendar, Special Service Dates) - stacking every
+	 * calendar open at once got unwieldy the moment a guide had more than
+	 * one special service/location combination, each with its own full
+	 * month grid. "Beschikbaarheid" (the regular calendar) is always the
+	 * first tab - admin/js/guide-calendars.js builds the rest (one per
+	 * special service/location the guide currently has checked above in
+	 * Guide Details, reacting live to those checkboxes) and controls which
+	 * single tab's panel is actually visible at a time.
+	 *
+	 * Both error transients (regular availability's own save errors, and
+	 * special-dates') are shown here, whichever fired - this single box
+	 * covers what used to be both meta boxes' render methods.
 	 */
-	public static function render_guide_special_dates( $post ) {
+	public static function render_guide_calendars( $post ) {
 		if ( 'auto-draft' === $post->post_status ) {
-			echo '<p>' . esc_html__( 'Save this guide first, then come back here to set special-service dates.', 'tc-booking' ) . '</p>';
+			echo '<p>' . esc_html__( 'Save this guide first, then come back here to manage their calendars.', 'tc-booking' ) . '</p>';
 			return;
 		}
-		$error_key = 'tc_guide_special_dates_error_' . get_current_user_id() . '_' . $post->ID;
-		$error     = get_transient( $error_key );
-		if ( $error ) {
-			delete_transient( $error_key );
-			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		foreach ( array( 'tc_guide_availability_error_', 'tc_guide_special_dates_error_' ) as $prefix ) {
+			$error_key = $prefix . get_current_user_id() . '_' . $post->ID;
+			$error     = get_transient( $error_key );
+			if ( $error ) {
+				delete_transient( $error_key );
+				echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+			}
 		}
-		echo '<div id="tc-special-dates-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
-	}
-
-	/**
-	 * Lets an admin view/edit this guide's own-availability calendar
-	 * (wp_tc_guide_availability) without needing to log in as the guide -
-	 * same REST-backed calendar widget the guide dashboard shortcode uses,
-	 * pointed at the admin-only /admin/guides/{id}/availability routes.
-	 */
-	public static function render_guide_availability( $post ) {
-		if ( 'auto-draft' === $post->post_status ) {
-			echo '<p>' . esc_html__( 'Save this guide first, then come back here to manage their availability calendar.', 'tc-booking' ) . '</p>';
-			return;
-		}
-		$error_key = 'tc_guide_availability_error_' . get_current_user_id() . '_' . $post->ID;
-		$error     = get_transient( $error_key );
-		if ( $error ) {
-			delete_transient( $error_key );
-			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
-		}
-		echo '<div id="tc-guide-availability-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
+		echo '<div id="tc-guide-calendar-root">' . esc_html__( 'Loading…', 'tc-booking' ) . '</div>';
 	}
 
 	public static function save_guide( $post_id ) {

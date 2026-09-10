@@ -1415,6 +1415,48 @@ the repeater's add/remove UI with an actual browser preview (index
 numbering on a freshly-added row, row removal), reusing the exact
 same JS the Extras repeater already had covered.
 
+## Guide edit screen's calendars, tabbed instead of all stacked open
+
+Follow-up feedback once special services (#71) landed: a guide with more
+than one special service/location combination ended up with several full
+month-grid calendars stacked one after another on their edit screen,
+alongside the regular availability calendar - unwieldy, and the regular
+one (what most guides actually use most of the time) could end up
+several scrolls down depending on how many special calendars came before
+it.
+
+Replaced the two separate meta boxes this used to be (Availability
+Calendar, Special Service Dates) with one - "Calendar"
+(`render_guide_calendars()`) - and merged their two scripts
+(`guide-availability.js`, `guide-special-dates.js`) into one,
+`admin/js/guide-calendars.js`, that renders a tab strip instead of
+stacking everything: "Beschikbaarheid" (the regular calendar) is always
+first, followed by one tab per (special service, location) the guide
+currently has checked - only one calendar's grid is ever visible at a
+time.
+
+The one real subtlety: hidden `<input>` fields carrying a staged-but-
+unsaved change (a toggled availability date, an offered special date)
+have to keep existing in the DOM for every calendar, not just whichever
+one's tab is currently open, or switching tabs before clicking Update
+would silently drop whatever was staged on the tab just left. `render()`
+always emits every calendar's hidden inputs regardless of `activeTab` -
+only the visible *panel* (the actual calendar grid/controls) is
+tab-scoped, not the data backing what will be submitted. Special-date
+tabs still appear/disappear live as the Locations covered/Services
+provided checkboxes above change, same as before this merge - both
+scripts already shared that same "another meta box's checkboxes, reached
+via a document-level change listener since meta boxes are just sections
+of one `<form>`" mechanism, so merging them into one file made that
+straightforward rather than needing any new coordination between two
+separate scripts.
+
+Verified with a browser preview: tab order (Beschikbaarheid first, a
+special tab added the moment a location checkbox reactivated it),
+switching tabs, and - the part actually worth checking rather than
+assuming - that toggling a date on one tab and then switching to another
+still left that first tab's hidden input in the DOM afterward.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
