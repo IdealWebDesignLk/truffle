@@ -612,13 +612,17 @@
 			var status    = cell ? cell.status : 'off';
 			var isPast    = dateObj < today;
 			var clickable = ! isPast && 'off' !== status;
-			var cls       = isPast ? 'past' : status;
+			// GitHub issue #73 - customers shouldn't be able to tell a day is
+			// almost full, only that it's open or not - 'limited' displays
+			// identically to 'available' (same label, same color). The
+			// underlying remaining-seat count is still tracked and enforced
+			// elsewhere (partySizeMax() above), just never shown here.
+			var displayStatus = 'limited' === status ? 'available' : status;
+			var cls       = isPast ? 'past' : displayStatus;
 			if ( iso === state.date ) cls += ' selected';
-			var label = 'available' === status ? I18N.statusOpen : ( 'limited' === status ? I18N.statusAlmostFull : I18N.statusClosed );
-			var remainingSub = ( cell && null !== cell.remaining && undefined !== cell.remaining && 'limited' === status )
-				? '<span class="rem">' + escapeHtml( i18nFmt( I18N.leftSuffix, cell.remaining ) ) + '</span>' : '';
+			var label = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
 			cells += '<div class="tc-avail-day ' + cls + '"' + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
-				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' + remainingSub ) + '</div>';
+				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + '</div>';
 		}
 
 		var minMonth = 0;
@@ -631,7 +635,6 @@
 				dowLabels().map( function ( l ) { return '<div class="tc-avail-dow">' + escapeHtml( l ) + '</div>'; } ).join( '' ) +
 				cells + '</div>' ) +
 			'<div class="tc-legend"><span><span class="tc-swatch" style="background:var(--available)"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
-			'<span><span class="tc-swatch" style="background:var(--limited)"></span>' + escapeHtml( I18N.statusAlmostFull ) + '</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>' + escapeHtml( I18N.legendNotAvailable ) + '</span></div>';
 	}
 

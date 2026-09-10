@@ -1236,6 +1236,27 @@ styling at all, caught by an actual rendered preview, not code review
 file). Nothing renders for anyone without `tc_manage_own_availability`
 (real customers).
 
+## Customers no longer see "Bijna vol" or the exact seat count (GitHub issue #73)
+
+The booking widget's availability calendar showed a distinct amber
+"Bijna vol" (almost full) status plus the exact number of seats left
+("Nog 2") for shared services close to capacity - explicitly not wanted:
+"we dont want to show it to customers." A `limited` day now displays
+identically to a fully `available` one in `renderAvailabilityCalendar()`
+(`public/js/booking-app.js`) - same "Open" label, same green color, no
+seat count - via a `displayStatus` that collapses `'limited'` into
+`'available'` before it reaches the cell's class/label, leaving the raw
+`status` value (and `cell.remaining`) untouched everywhere else. That
+distinction matters because `cell.remaining` still does real work
+elsewhere in the same file - `partySizeMax()` still caps the "how many
+people are you bringing" stepper at the actual remaining seats, it's
+just never displayed as a number on the calendar itself. The now-unused
+`statusAlmostFull`/`leftSuffix` i18n strings and their `.tc-avail-day
+.rem`/`.tc-avail-day.limited` CSS rules were removed rather than left as
+dead code. This is customer-facing only - the guide/admin's own calendar
+(`.tc-cal-day`, a different set of classes entirely) still shows real
+booked/limited status, since staff still need to see it.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

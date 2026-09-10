@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.31.2
+Stable tag: 0.31.3
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,12 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.31.3 =
+* The booking widget's calendar no longer shows "Bijna vol" (almost full)
+  or the exact number of seats left to customers - a day is now shown as
+  simply open or closed, nothing in between (GitHub issue #73). Staff
+  still see full booked/limited status on their own calendars.
 
 = 0.31.2 =
 * Added a prominent "Ga naar je agenda" banner on WooCommerce's My Account

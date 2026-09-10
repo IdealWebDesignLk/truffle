@@ -106,12 +106,12 @@ class TC_Booking_Shortcode {
 					'dayUnit'                 => __( 'dag', 'tc-booking' ),
 					'daysUnit'                => __( 'dagen', 'tc-booking' ),
 
-					// Availability calendar
+					// Availability calendar - customers only ever see "open" or
+					// "closed" (GitHub issue #73: a day with seats left but
+					// not full used to show "Bijna vol" plus the exact
+					// remaining count, which we don't want to reveal).
 					'statusOpen'              => __( 'Open', 'tc-booking' ),
-					'statusAlmostFull'        => __( 'Bijna vol', 'tc-booking' ),
 					'statusClosed'            => __( 'Gesloten', 'tc-booking' ),
-					/* translators: %d: number of seats remaining */
-					'leftSuffix'              => __( 'Nog %d', 'tc-booking' ),
 					'legendAvailable'         => __( 'Beschikbaar', 'tc-booking' ),
 					'legendNotAvailable'      => __( 'Niet beschikbaar', 'tc-booking' ),
 
