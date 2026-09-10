@@ -1457,6 +1457,43 @@ switching tabs, and - the part actually worth checking rather than
 assuming - that toggling a date on one tab and then switching to another
 still left that first tab's hidden input in the DOM afterward.
 
+## Special services aren't available at every location (follow-up to #71)
+
+A special service can be tied to a specific place - "not all the
+locations" offer it. The Service edit screen's own "Special service"
+block now has an "Available locations" checklist (empty = no
+restriction, matching how an unset per-location capacity override
+already means "use the default" elsewhere in this file, not "allow
+nothing"), stored as `_tc_special_locations` and exposed via
+`get_service_data()`.
+
+New `TC_Availability::special_location_allowed( $service, $location_id )`
+is the one place that decision gets made, and it's checked in three
+places rather than just one, since none of the existing "does a guide
+cover this" checks had any way to know a service itself was
+location-restricted:
+- `guide_available_on()`'s special-service branch - real-time, so even a
+  stale `_tc_special_dates` row left over from before a service's
+  allowed-locations list was narrowed can't grant availability it no
+  longer should (verified directly - a guide with an existing opted-in
+  date at a location later excluded from the service's own list
+  correctly reads as unavailable there, not just newly-added dates).
+- `service_available_at_location()` - so the booking widget's location
+  step doesn't offer the service at all at a location it can't happen
+  at, same as it already does for "no guide covers this combination."
+- `TC_Meta_Boxes::save_guide_special_dates_changes()` - so a guide can't
+  even stage a special date at a location the service itself doesn't
+  allow, regardless of what the client posts.
+
+The Guide edit screen's calendar tabs (`admin/js/guide-calendars.js`)
+needed the same filter client-side too, or a guide covering a location
+the service isn't actually offered at would still get an empty,
+misleading tab for it - `activeSpecialPairs()` now also checks each
+service's own `specialLocations` (sent per-service in the
+`tcGuideSpecialDatesAdmin` payload) before including a pair, verified
+with a browser preview: a service restricted to one location produces
+exactly one tab even when the guide covers two.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

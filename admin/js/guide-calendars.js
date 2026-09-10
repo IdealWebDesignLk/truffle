@@ -253,13 +253,19 @@
 
 	// The (service, location) pairs that currently deserve a tab - both
 	// must be checked in Guide Details' own Locations covered/Services
-	// provided lists elsewhere on this page.
+	// provided lists elsewhere on this page, AND (follow-up to #71) the
+	// location must be one this service is actually available at -
+	// service.specialLocations empty means no restriction, matching
+	// TC_Availability::special_location_allowed() server-side.
 	function activeSpecialPairs() {
 		var checkedServiceIds  = checkedValues( 'tc_service_ids[]' );
 		var checkedLocationIds = checkedValues( 'tc_location_ids[]' );
 		var pairs = [];
 		SERVICES.filter( function ( s ) { return checkedServiceIds.indexOf( String( s.id ) ) !== -1; } ).forEach( function ( service ) {
-			LOCATIONS.filter( function ( l ) { return checkedLocationIds.indexOf( String( l.id ) ) !== -1; } ).forEach( function ( location ) {
+			var allowedLocations = ( service.specialLocations && service.specialLocations.length )
+				? LOCATIONS.filter( function ( l ) { return service.specialLocations.indexOf( l.id ) !== -1; } )
+				: LOCATIONS;
+			allowedLocations.filter( function ( l ) { return checkedLocationIds.indexOf( String( l.id ) ) !== -1; } ).forEach( function ( location ) {
 				pairs.push( { key: pairKey( service.id, location.id ), service: service, location: location } );
 			} );
 		} );

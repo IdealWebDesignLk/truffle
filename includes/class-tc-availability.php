@@ -242,6 +242,9 @@ class TC_Availability {
 		// selected those dates ... other normal services wont be
 		// available on that day," per the same issue.
 		if ( ! empty( $service['is_special'] ) ) {
+			if ( ! self::special_location_allowed( $service, $location_id ) ) {
+				return false;
+			}
 			if ( ! self::guide_offers_special_on( $guide_id, $service['id'], $location_id, $date_str ) ) {
 				return false;
 			}
@@ -424,7 +427,32 @@ class TC_Availability {
 	 * @return bool
 	 */
 	public static function service_available_at_location( $location_id, $service_id ) {
+		$service = self::get_service_data( $service_id );
+		if ( $service && ! self::special_location_allowed( $service, $location_id ) ) {
+			return false;
+		}
 		return (bool) self::get_guides_for( $location_id, $service_id );
+	}
+
+	/**
+	 * GitHub follow-up to issue #71 - a special service isn't necessarily
+	 * offered at every location it might otherwise be linked to via a
+	 * covering guide; the Service edit screen's own "Available locations"
+	 * list (Service Details -> Special service) is the actual source of
+	 * truth for where it can happen at all. Always true for a non-special
+	 * service (this restriction doesn't apply to it) or when that list is
+	 * empty (no restriction configured yet).
+	 *
+	 * Public since TC_Meta_Boxes::save_guide_special_dates_changes() also
+	 * needs this same check when validating a guide's staged special
+	 * dates - a location the guide covers but this service isn't actually
+	 * offered at must still be rejected there.
+	 */
+	public static function special_location_allowed( $service, $location_id ) {
+		if ( empty( $service['is_special'] ) || empty( $service['special_locations'] ) ) {
+			return true;
+		}
+		return in_array( (int) $location_id, $service['special_locations'], true );
 	}
 
 	/**
@@ -435,8 +463,9 @@ class TC_Availability {
 		if ( ! $post || TC_CPT::SERVICE !== $post->post_type ) {
 			return null;
 		}
-		$extras    = get_post_meta( $service_id, '_tc_extras', true );
-		$overrides = get_post_meta( $service_id, '_tc_location_capacity_overrides', true );
+		$extras             = get_post_meta( $service_id, '_tc_extras', true );
+		$overrides          = get_post_meta( $service_id, '_tc_location_capacity_overrides', true );
+		$special_locations  = get_post_meta( $service_id, '_tc_special_locations', true );
 		return array(
 			'id'                 => $post->ID,
 			'name'               => $post->post_title,
@@ -457,6 +486,11 @@ class TC_Availability {
 			// its normal --available color rather than an empty swatch.
 			'is_special'         => (bool) get_post_meta( $service_id, '_tc_is_special', true ),
 			'special_color'      => (string) get_post_meta( $service_id, '_tc_special_color', true ),
+			// Which locations this special service can happen at - empty
+			// means no restriction (matches how an unset location capacity
+			// override above means "use the global value", not "allow
+			// nothing"). Ignored entirely for a non-special service.
+			'special_locations'  => is_array( $special_locations ) ? array_map( 'intval', $special_locations ) : array(),
 			// GitHub issue #74 - per-location Max capacity overrides (a
 			// smaller venue can't host as many people as this service's
 			// own global Max capacity above). Raw override list, resolved

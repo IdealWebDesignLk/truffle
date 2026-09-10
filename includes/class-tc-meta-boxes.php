@@ -82,7 +82,17 @@ class TC_Meta_Boxes {
 				if ( ! get_post_meta( $service_post->ID, '_tc_is_special', true ) ) {
 					continue;
 				}
-				$special_services[] = array( 'id' => $service_post->ID, 'name' => $service_post->post_title );
+				// Follow-up to issue #71 - a special service isn't
+				// necessarily offered everywhere; special_locations lets
+				// this screen's JS skip a tab for a location the guide
+				// covers but this particular service isn't available at.
+				// Empty means no restriction (see get_service_data()).
+				$service_special_locations = get_post_meta( $service_post->ID, '_tc_special_locations', true );
+				$special_services[]        = array(
+					'id'               => $service_post->ID,
+					'name'             => $service_post->post_title,
+					'specialLocations' => is_array( $service_special_locations ) ? array_map( 'intval', $service_special_locations ) : array(),
+				);
 			}
 			$locations = array();
 			foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) ) as $location_post ) {
@@ -231,6 +241,8 @@ class TC_Meta_Boxes {
 			// new default color out of nowhere.
 			$special_color = '#A2703A';
 		}
+		$special_location_ids = get_post_meta( $post->ID, '_tc_special_locations', true );
+		$special_location_ids = is_array( $special_location_ids ) ? array_map( 'intval', $special_location_ids ) : array();
 
 		if ( '' === $duration_days ) {
 			$duration_days = 1;
@@ -309,6 +321,16 @@ class TC_Meta_Boxes {
 						<input type="text" id="tc_special_color" name="tc_special_color" value="<?php echo esc_attr( $special_color ); ?>" data-default-color="#A2703A" class="tc-color-picker">
 						<p class="description"><?php esc_html_e( 'Shown on the booking widget\'s calendar for this service\'s open dates, instead of the usual color, so customers can tell it apart at a glance.', 'tc-booking' ); ?></p>
 					</p>
+					<div style="margin-top:10px;">
+						<strong><?php esc_html_e( 'Available locations', 'tc-booking' ); ?></strong>
+						<?php foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC' ) ) as $location ) : ?>
+							<label style="display:block;">
+								<input type="checkbox" name="tc_special_locations[]" value="<?php echo esc_attr( $location->ID ); ?>" <?php checked( in_array( $location->ID, $special_location_ids, true ) ); ?>>
+								<?php echo esc_html( $location->post_title ); ?>
+							</label>
+						<?php endforeach; ?>
+						<p class="description"><?php esc_html_e( 'Which locations this special service can actually happen at - leave every box unchecked to allow any location (no restriction). Guides won\'t get a calendar for this service at a location that isn\'t checked here, and it won\'t be offered to customers there either.', 'tc-booking' ); ?></p>
+					</div>
 				</td>
 			</tr>
 		</table>
@@ -443,6 +465,11 @@ class TC_Meta_Boxes {
 			$color = sanitize_hex_color( wp_unslash( $_POST['tc_special_color'] ) );
 			update_post_meta( $post_id, '_tc_special_color', $color ? $color : '' );
 		}
+		// Empty (no boxes checked) means "no restriction" - see
+		// TC_Availability::effective_special_locations() - so this is
+		// deliberately allowed to save as an empty array, not skipped.
+		$special_locations = isset( $_POST['tc_special_locations'] ) ? array_map( 'absint', (array) $_POST['tc_special_locations'] ) : array();
+		update_post_meta( $post_id, '_tc_special_locations', array_values( array_unique( array_filter( $special_locations ) ) ) );
 
 		$extras = array();
 		if ( isset( $_POST['tc_extras'] ) && is_array( $_POST['tc_extras'] ) ) {
@@ -646,7 +673,9 @@ class TC_Meta_Boxes {
 			}
 			foreach ( $by_location as $location_id => $dates ) {
 				$location_id = absint( $location_id );
-				if ( ! in_array( $location_id, $location_ids, true ) || ! is_array( $dates ) ) {
+				if ( ! in_array( $location_id, $location_ids, true ) || ! is_array( $dates )
+					|| ! TC_Availability::special_location_allowed( $service, $location_id )
+				) {
 					continue;
 				}
 				foreach ( $dates as $date ) {
