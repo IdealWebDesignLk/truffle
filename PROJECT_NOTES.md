@@ -1576,6 +1576,47 @@ service with the special one closed showed no dot, and clicking the dot
 correctly swapped to "Volle Maan Ceremonie" and advanced to the next
 step with that date already selected.
 
+## No service pre-selected on step 2 - a combined "every service" calendar instead
+
+Follow-up: the service step used to auto-pick the first service in the
+list the moment its catalog loaded, immediately narrowing the calendar
+to just that one. Landing state is now no selection at all -
+`loadServicesForLocation()` no longer defaults `state.serviceId` to
+`state.services[0].id`, it's simply left unset unless the customer
+already had a valid one (e.g. back from a later step).
+
+With nothing picked, `renderCombinedCalendar()` shows instead of nothing:
+every service at this location overlaid on one calendar, each with its
+own color dot (`--available` green for a normal service, its own
+`special_color` for a special one - same colors `renderAvailabilityCalendar()`
+already used) on any date it's open, several dots side by side
+(`.tc-avail-dots`) when more than one service is open the same day. The
+day cell itself has no single-service status to show once nothing's
+selected, so it's a plain neutral tone (`.tc-avail-day.neutral`) rather
+than reusing the green/gray open/closed coloring, and isn't clickable on
+its own - only the dots are. A color-keyed legend underneath lists every
+service by name so the dots are actually readable, not just decorative.
+
+Loading reuses the same `/availability?service_id=&location_id=&start=&end=`
+endpoint the single-service view already calls, just once per service
+(`loadAllServiceGrids()`) instead of once for whichever's selected.
+Picking a card still narrows to that one service's own calendar exactly
+as before; clicking the SAME card again now deselects it back to the
+combined view, rather than leaving no way back to it once something's
+picked. `selectServiceDate()` (renamed from `selectSpecialOverlayDate()`,
+same function) handles clicking a dot from either the combined view or
+the special-service overlay on a single-service view identically -
+switch service, set date, reuse whichever grid was already fetched for
+that dot, advance.
+
+Verified with a mocked-fetch browser harness: landing on the service
+step shows the combined calendar with neither card marked selected and a
+two-entry legend matching each service's own dot color; a day with both
+services open shows two dots; picking a card filters to one calendar and
+marks that card selected; clicking it again reverts to the combined view
+with both dots back; clicking a dot from the combined view switches
+straight to that service with the date pre-selected and advances.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

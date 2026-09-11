@@ -103,6 +103,11 @@ class TC_Booking_Shortcode {
 					/* translators: %s: service/ceremony name */
 					'availableDatesFor'       => __( 'Beschikbare data voor %s', 'tc-booking' ),
 					'selectOpenDay'           => __( 'Selecteer een beschikbare dag om verder te gaan.', 'tc-booking' ),
+					// GitHub follow-up to #71/#72 - shown instead of the two
+					// above when no service card is picked yet, the default
+					// landing state now (renderCombinedCalendar()).
+					'availableDatesAllServices' => __( 'Beschikbare data', 'tc-booking' ),
+					'selectOpenDayAnyService'   => __( 'Kies een ceremonie hierboven, of selecteer direct een gekleurde datum hieronder.', 'tc-booking' ),
 					'dayUnit'                 => __( 'dag', 'tc-booking' ),
 					'daysUnit'                => __( 'dagen', 'tc-booking' ),
 
