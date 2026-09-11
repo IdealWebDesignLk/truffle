@@ -270,19 +270,11 @@
 .tc-avail-day.empty { visibility: hidden; }
 .tc-avail-day.past { background: transparent; color: var(--ink-soft); opacity: .4; cursor: default; }
 .tc-avail-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; }
-/* The combined "no service picked yet" calendar's own cells
-   (renderCombinedCalendar()) - no single service owns the day, so it's a
-   plain neutral tone rather than --available/--unavailable, and not
-   clickable itself (cursor:default), only its dots are. */
-.tc-avail-day.neutral { background: var(--surface-dim); color: var(--ink); cursor: default; }
-/* A service's own open date, surfaced as a small dot rather than owning
-   the whole cell's color - see specialOverlayFor()/renderCombinedCalendar()
-   and selectServiceDate() in booking-app.js. cursor:pointer here
-   specifically, since the day cell it sits inside is often itself
-   cursor:default (.tc-avail-day.off/.neutral). Several can sit side by
-   side in .tc-avail-dots when more than one service is open the same date. */
-.tc-avail-special-dot { width: 7px; height: 7px; border-radius: 50%; cursor: pointer; }
-.tc-avail-dots { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+/* The combined "no service picked yet" calendar's own "available" cells
+   (renderCombinedCalendar()/combinedStatusFor()) that aren't a special
+   service - could be any number of different normal services, so shown
+   as informational only, not a specific date to select yet. */
+.tc-avail-day.not-clickable { cursor: default; }
 @media (max-width: 480px) { .tc-avail-day { font-size: 10.5px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }

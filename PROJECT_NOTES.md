@@ -1585,17 +1585,27 @@ to just that one. Landing state is now no selection at all -
 `state.services[0].id`, it's simply left unset unless the customer
 already had a valid one (e.g. back from a later step).
 
-With nothing picked, `renderCombinedCalendar()` shows instead of nothing:
-every service at this location overlaid on one calendar, each with its
-own color dot (`--available` green for a normal service, its own
-`special_color` for a special one - same colors `renderAvailabilityCalendar()`
-already used) on any date it's open, several dots side by side
-(`.tc-avail-dots`) when more than one service is open the same day. The
-day cell itself has no single-service status to show once nothing's
-selected, so it's a plain neutral tone (`.tc-avail-day.neutral`) rather
-than reusing the green/gray open/closed coloring, and isn't clickable on
-its own - only the dots are. A color-keyed legend underneath lists every
-service by name so the dots are actually readable, not just decorative.
+With nothing picked, `renderCombinedCalendar()` shows instead of
+nothing. First attempt used a small colored dot per service on each date
+it was open (several side by side on a day more than one was open) -
+explicit feedback afterward was to drop the dots and color the whole
+cell instead, with a simpler rule behind it: `combinedStatusFor()`
+resolves each day to exactly ONE status - a special service's own color
+if any special service is open that day, else the plain "available"
+green if any normal (non-special) one is, else "not available" gray. A
+special service's color always wins over "available" when both would
+otherwise apply, since a guide opting into a special date already closes
+their regular calendar for that day
+(`TC_Availability::guide_available_on()`) - in practice there's only
+ever one real answer for a given date, not a mix to blend, so collapsing
+several services' dots down to one color per day loses nothing. A plain
+"available" (green) day isn't clickable, since it could be any number of
+different normal services - only a special-service day is
+(`selectServiceDate()`, renamed from the dot-era
+`selectSpecialOverlayDate()`), since that always means exactly one
+specific service. The legend underneath now reads "Available" / "Not
+available" (matching the single-service view's own) plus one entry per
+special service actually offered at this location.
 
 Loading reuses the same `/availability?service_id=&location_id=&start=&end=`
 endpoint the single-service view already calls, just once per service
@@ -1603,19 +1613,24 @@ endpoint the single-service view already calls, just once per service
 Picking a card still narrows to that one service's own calendar exactly
 as before; clicking the SAME card again now deselects it back to the
 combined view, rather than leaving no way back to it once something's
-picked. `selectServiceDate()` (renamed from `selectSpecialOverlayDate()`,
-same function) handles clicking a dot from either the combined view or
-the special-service overlay on a single-service view identically -
-switch service, set date, reuse whichever grid was already fetched for
-that dot, advance.
+picked.
 
-Verified with a mocked-fetch browser harness: landing on the service
-step shows the combined calendar with neither card marked selected and a
-two-entry legend matching each service's own dot color; a day with both
-services open shows two dots; picking a card filters to one calendar and
-marks that card selected; clicking it again reverts to the combined view
-with both dots back; clicking a dot from the combined view switches
-straight to that service with the date pre-selected and advances.
+The dot-based single-service "overlay" (surfacing other special
+services' open dates as a small dot while looking at one particular
+service's own calendar) was removed entirely along with the dots
+themselves, rather than kept as a second dot-shaped feature - with every
+service already visible up front on the new combined default view, it
+had lost its original reason to exist, and the ask was specifically to
+stop using dots as a pattern, not just on this one screen.
+
+Verified with a mocked-fetch browser harness matching the exact scenario
+described: three consecutive dates green ("Open", normal service), the
+next gray ("Closed"), the one after that in the special service's own
+brown ("Open") - confirmed the green days carry no click handler
+(`.not-clickable`) while the brown one does and correctly reports that
+service's id, clicking it switches straight to that service with the
+date pre-selected and advances, and the legend lists Available/Not
+available/the special service's own name and color.
 
 ## Testing performed
 
