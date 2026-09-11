@@ -88,6 +88,14 @@
 		monthOffset: 0,
 		grid: [],
 		gridLoading: false,
+		// serviceId -> that special service's own grid rows for the current
+		// location/month - overlaid as a small dot on the currently viewed
+		// service's own calendar (GitHub follow-up to #71/#72: surface a
+		// special service's open dates even before it's explicitly picked
+		// from the cards above). Never includes the currently selected
+		// service - no point overlaying a calendar onto itself.
+		specialGrids: {},
+		specialOverlayToken: '',
 		servicesLoading: false,
 		extraQty: {},
 		partySize: 1,
@@ -235,6 +243,29 @@
 		var found = null;
 		state.services.forEach( function ( s ) {
 			if ( s.id === id ) found = s;
+		} );
+		return found;
+	}
+
+	// The first special service (other than the one currently being
+	// viewed) open on this date, from state.specialGrids - see
+	// loadSpecialOverlays(). 'limited' counts as open here too, matching
+	// how the day's own main status already treats it (GitHub issue #73 -
+	// customers only ever see open/closed, never the distinction).
+	function specialOverlayFor( iso ) {
+		var found = null;
+		Object.keys( state.specialGrids ).some( function ( serviceId ) {
+			var rows = state.specialGrids[ serviceId ];
+			var row  = null;
+			rows.forEach( function ( r ) { if ( r.date === iso ) row = r; } );
+			if ( row && 'off' !== row.status ) {
+				var svc = getService( parseInt( serviceId, 10 ) );
+				if ( svc ) {
+					found = { serviceId: svc.id, name: svc.name, color: svc.special_color || 'var(--brand)' };
+					return true;
+				}
+			}
+			return false;
 		} );
 		return found;
 	}
@@ -629,8 +660,19 @@
 			var label = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
 			var dayStyle = ( specialColor && ! isPast && 'available' === displayStatus )
 				? ' style="background:' + escapeHtml( specialColor ) + '19;color:' + escapeHtml( specialColor ) + ';"' : '';
+			// GitHub follow-up to #71/#72 - a special service's open dates
+			// are surfaced as a small dot on whichever OTHER service's
+			// calendar is currently showing, so a customer can spot one
+			// without first picking it from the cards above. Independent of
+			// this cell's own status/clickability for the currently viewed
+			// service - a date closed for the normal service being viewed
+			// can still be open for a special one.
+			var overlay     = isPast ? null : specialOverlayFor( iso );
+			var overlayDot  = overlay
+				? '<span class="tc-avail-special-dot" style="background:' + escapeHtml( overlay.color ) + '" data-special-svc="' + overlay.serviceId + '" data-special-date="' + iso + '" title="' + escapeAttr( overlay.name ) + '"></span>'
+				: '';
 			cells += '<div class="tc-avail-day ' + cls + '"' + dayStyle + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
-				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + '</div>';
+				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + overlayDot + '</div>';
 		}
 
 		var minMonth = 0;
@@ -861,9 +903,9 @@
 		}
 
 		var prevMonth = document.getElementById( 'tc-prev-month' );
-		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadGrid(); };
+		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadGrid(); loadSpecialOverlays(); };
 		var nextMonth = document.getElementById( 'tc-next-month' );
-		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); };
+		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); loadSpecialOverlays(); };
 
 		// GitHub issue #21 - picking a ceremony card no longer implies a
 		// date; it just swaps which service's calendar is shown below, and
@@ -880,6 +922,7 @@
 				state.partySize  = 1;
 				state.guests     = [];
 				loadGrid();
+				loadSpecialOverlays();
 			};
 		} );
 
@@ -890,6 +933,18 @@
 				state.partySize = 1;
 				state.guests    = [];
 				goNext();
+			};
+		} );
+
+		// The overlay dot sits inside a .tc-avail-day cell that may itself
+		// also be clickable for the currently viewed (normal) service -
+		// stopPropagation() so clicking the dot switches to the special
+		// service instead of ALSO triggering the cell's own date-select
+		// for whichever service is currently showing.
+		root.querySelectorAll( '.tc-avail-special-dot' ).forEach( function ( el ) {
+			el.onclick = function ( e ) {
+				e.stopPropagation();
+				selectSpecialOverlayDate( parseInt( el.dataset.specialSvc, 10 ), el.dataset.specialDate );
 			};
 		} );
 
@@ -988,6 +1043,7 @@
 				}
 				render();
 				loadGrid();
+				loadSpecialOverlays();
 			} )
 			.catch( function ( err ) {
 				if ( requestedLocation !== state.locationId ) return;
@@ -1018,6 +1074,60 @@
 				state.gridLoading  = false;
 				render();
 			} );
+	}
+
+	// Fetches every OTHER special service offered at this location's own
+	// grid for the currently viewed month, so renderAvailabilityCalendar()
+	// can overlay a small dot on the currently selected (normal) service's
+	// calendar for any date one of them is open - see the note on
+	// state.specialGrids above. Fired alongside loadGrid() at every point
+	// that changes what it needs to reflect (location, service, month).
+	function loadSpecialOverlays() {
+		var bounds  = monthBoundsFromOffset( state.monthOffset );
+		var start   = isoDate( bounds.first );
+		var end     = isoDate( bounds.last );
+		// Guards against a stale batch landing after the customer moved on
+		// (changed service/location/month again before these resolved) -
+		// same idea as loadGrid()'s requestedService guard, just covering
+		// every axis this fetch depends on in one token.
+		var token = state.locationId + ':' + state.serviceId + ':' + state.monthOffset;
+		state.specialOverlayToken = token;
+
+		var specials = state.services.filter( function ( s ) { return s.is_special && s.id !== state.serviceId; } );
+		if ( ! specials.length ) {
+			state.specialGrids = {};
+			render();
+			return;
+		}
+
+		Promise.all( specials.map( function ( s ) {
+			return apiGet( withLang( '/availability?service_id=' + s.id + '&location_id=' + state.locationId + '&start=' + start + '&end=' + end ) )
+				.then( function ( rows ) { return { id: s.id, rows: rows }; } )
+				.catch( function () { return { id: s.id, rows: [] }; } ); // one special service's overlay failing shouldn't break the main calendar
+		} ) ).then( function ( results ) {
+			if ( token !== state.specialOverlayToken ) return;
+			var grids = {};
+			results.forEach( function ( r ) { grids[ r.id ] = r.rows; } );
+			state.specialGrids = grids;
+			render();
+		} );
+	}
+
+	// Switches straight to a special service spotted via the overlay dot on
+	// another service's calendar (GitHub follow-up to #71/#72 - "if client
+	// select that date, service selection at top should auto change") -
+	// reuses the grid already fetched for the overlay itself as the new
+	// state.grid, rather than a redundant loadGrid() round trip before
+	// goNext() can safely read partySizeMax()/selectedGridCell() for it.
+	function selectSpecialOverlayDate( serviceId, iso ) {
+		state.serviceId = serviceId;
+		state.date       = iso;
+		state.grid        = state.specialGrids[ serviceId ] || [];
+		state.specialGrids = {}; // now showing that service's own calendar - nothing left to overlay onto it
+		state.extraQty  = {};
+		state.partySize = 1;
+		state.guests    = [];
+		goNext();
 	}
 
 	function submitBooking() {

@@ -1539,6 +1539,43 @@ click producing exactly the two expected POST bodies, and both tabs
 showing the change as committed (solid color, no dashed "unsaved"
 outline) afterward.
 
+## Special-service dates surfaced on the regular booking calendar
+
+Follow-up request: a customer had no way to discover a special service
+existed unless they happened to click its card first - "before we select
+any special service in service selection can we show them in the
+booking calendar." Whichever service's calendar is currently showing
+(normal or special) now overlays a small colored dot on any date one of
+the OTHER special services at this location is open, using that
+service's own `special_color` (issue #72) - `loadSpecialOverlays()`
+fetches every other special service's grid for the current
+location/month alongside the currently selected service's own
+`loadGrid()` call (same `/availability` endpoint the calendar already
+uses, just once per special service), and `specialOverlayFor()` looks up
+a match per cell at render time.
+
+The dot is deliberately independent of the cell's own status for the
+currently viewed service - a date can be closed for whatever's currently
+selected (gray, not clickable) and still carry a dot for a special
+service that IS open there, since the whole point is surfacing an option
+the customer wouldn't otherwise see. Clicking the dot ("if client select
+that date, service selection at top should auto change") calls
+`selectSpecialOverlayDate()`, which switches `state.serviceId`, sets the
+date, and reuses the grid already fetched for the overlay as the new
+`state.grid` - not a redundant round trip - before advancing straight to
+the next step, exactly like picking a date normally does.
+`e.stopPropagation()` on the dot's own click handler keeps it from also
+firing the day cell's own (possibly different) date-select action
+underneath it.
+
+Verified with a full mocked-fetch browser harness driving the actual
+booking-app.js through real clicks (location card, calendar), not a
+re-implementation: a date closed for the selected normal service but
+open for a special one showed the dot, a date open for the normal
+service with the special one closed showed no dot, and clicking the dot
+correctly swapped to "Volle Maan Ceremonie" and advanced to the next
+step with that date already selected.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

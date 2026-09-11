@@ -270,6 +270,13 @@
 .tc-avail-day.empty { visibility: hidden; }
 .tc-avail-day.past { background: transparent; color: var(--ink-soft); opacity: .4; cursor: default; }
 .tc-avail-day.selected { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* A special service's own open date, surfaced as a small dot on whichever
+   other service's calendar is currently showing - see
+   specialOverlayFor()/selectSpecialOverlayDate() in booking-app.js.
+   cursor:pointer here specifically, since the day cell it sits inside
+   might otherwise be cursor:default (.tc-avail-day.off, a date closed
+   for the currently viewed service but still open for this one). */
+.tc-avail-special-dot { width: 7px; height: 7px; border-radius: 50%; cursor: pointer; }
 @media (max-width: 480px) { .tc-avail-day { font-size: 10.5px; } .tc-avail-day .d { font-size: 12px; } .tc-avail-day .status { font-size: 7.5px; } }
 .tc-legend { display: flex; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--ink-soft); flex-wrap: wrap; }
 .tc-legend span { display: flex; align-items: center; gap: 6px; }
