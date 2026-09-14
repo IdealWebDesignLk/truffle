@@ -88,16 +88,15 @@
 		monthOffset: 0,
 		grid: [],
 		gridLoading: false,
-		// serviceId -> that service's own grid rows, for the "no service
-		// picked yet" combined calendar (renderCombinedCalendar()) - each
-		// date's cell color there is resolved from every service's status
-		// on it (a special service's own color takes priority, since a
-		// guide opting into one closes their regular calendar for that day
-		// - see TC_Availability::guide_available_on() - so a special and a
-		// normal service are never really both "the" answer for the same
-		// date at once).
-		allServiceGrids: {},
-		allServiceGridsToken: '',
+		// serviceId -> that special service's own grid rows for the current
+		// location/month - overlaid (full cell color, not just a dot) on
+		// the currently selected service's own calendar for any date one
+		// of them is open, so a customer browsing the default (first)
+		// service still sees a special service's rare open dates without
+		// having to pick its card first. Never includes the currently
+		// selected service - no point overlaying a calendar onto itself.
+		specialGrids: {},
+		specialOverlayToken: '',
 		servicesLoading: false,
 		extraQty: {},
 		partySize: 1,
@@ -245,6 +244,29 @@
 		var found = null;
 		state.services.forEach( function ( s ) {
 			if ( s.id === id ) found = s;
+		} );
+		return found;
+	}
+
+	// The first special service (other than the one currently being
+	// viewed) open on this date, from state.specialGrids - see
+	// loadSpecialOverlays(). 'limited' counts as open here too, matching
+	// how the day's own main status already treats it (GitHub issue #73 -
+	// customers only ever see open/closed, never the distinction).
+	function specialOverlayFor( iso ) {
+		var found = null;
+		Object.keys( state.specialGrids ).some( function ( serviceId ) {
+			var rows = state.specialGrids[ serviceId ];
+			var row  = null;
+			rows.forEach( function ( r ) { if ( r.date === iso ) row = r; } );
+			if ( row && 'off' !== row.status ) {
+				var svc = getService( parseInt( serviceId, 10 ) );
+				if ( svc ) {
+					found = svc;
+					return true;
+				}
+			}
+			return false;
 		} );
 		return found;
 	}
@@ -594,19 +616,11 @@
 				} ).join( '' ) + '</div>'
 				: '<p style="color:var(--ink-soft);font-size:14px">' + escapeHtml( I18N.noServicesAvailable ) + '</p>' );
 
-		// No service picked yet (the default landing state, follow-up
-		// request) shows every service's own calendar overlaid together
-		// instead of nothing - renderCombinedCalendar(). Picking a card
-		// narrows to that one service's own calendar, same as before.
 		var calendarArea = service
 			? '<p class="tc-cal-heading">' + escapeHtml( i18nFmt( I18N.availableDatesFor, service.name ) ) + '</p>' +
 				'<p class="tc-sub">' + escapeHtml( I18N.selectOpenDay ) + '</p>' +
 				renderAvailabilityCalendar( service )
-			: ( state.services.length
-				? '<p class="tc-cal-heading">' + escapeHtml( I18N.availableDatesAllServices ) + '</p>' +
-					'<p class="tc-sub">' + escapeHtml( I18N.selectOpenDayAnyService ) + '</p>' +
-					renderCombinedCalendar()
-				: '' );
+			: '';
 
 		return '<h2 class="tc-title">' + escapeHtml( i18nFmt( I18N.locationLabel, loc ? loc.name.split( ' (' )[ 0 ] : '' ) ) + '</h2>' +
 			'<p class="tc-sub">' + escapeHtml( I18N.chooseServiceSub ) + '</p>' +
@@ -636,28 +650,61 @@
 		for ( var d = 1; d <= daysInMo; d++ ) {
 			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
 			var iso     = isoDate( dateObj );
-			var cell    = null;
-			state.grid.forEach( function ( g ) { if ( g.date === iso ) cell = g; } );
-			var status    = cell ? cell.status : 'off';
-			var isPast    = dateObj < today;
-			var clickable = ! isPast && 'off' !== status;
-			// GitHub issue #73 - customers shouldn't be able to tell a day is
-			// almost full, only that it's open or not - 'limited' displays
-			// identically to 'available' (same label, same color). The
-			// underlying remaining-seat count is still tracked and enforced
-			// elsewhere (partySizeMax() above), just never shown here.
-			var displayStatus = 'limited' === status ? 'available' : status;
-			var cls       = isPast ? 'past' : displayStatus;
+			var isPast  = dateObj < today;
+
+			// GitHub follow-up to #71/#72 - a special service's own open
+			// dates are surfaced right on whichever (normal) service's
+			// calendar is currently showing, in that special service's own
+			// full color, rather than requiring it to be picked from the
+			// cards above first. Takes over the whole cell (color, label,
+			// click target) rather than just adding a marker - a guide
+			// opting into a special date already closes their regular
+			// calendar for that day (TC_Availability::guide_available_on()),
+			// so there's only ever one real answer for a date to show, not
+			// a mix to blend with the currently selected service's own
+			// status below.
+			var overlay = isPast ? null : specialOverlayFor( iso );
+			var cls, label, dayStyle, attrs;
+			if ( overlay ) {
+				cls      = 'available';
+				label    = I18N.statusOpen;
+				dayStyle = overlay.special_color ? ' style="background:' + escapeHtml( overlay.special_color ) + '19;color:' + escapeHtml( overlay.special_color ) + ';"' : '';
+				attrs    = ' data-special-svc="' + overlay.id + '" data-special-date="' + iso + '"';
+			} else {
+				var cell = null;
+				state.grid.forEach( function ( g ) { if ( g.date === iso ) cell = g; } );
+				var status    = cell ? cell.status : 'off';
+				var clickable = ! isPast && 'off' !== status;
+				// GitHub issue #73 - customers shouldn't be able to tell a
+				// day is almost full, only that it's open or not -
+				// 'limited' displays identically to 'available' (same
+				// label, same color). The underlying remaining-seat count
+				// is still tracked and enforced elsewhere (partySizeMax()
+				// above), just never shown here.
+				var displayStatus = 'limited' === status ? 'available' : status;
+				cls      = displayStatus;
+				label    = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
+				dayStyle = ( specialColor && ! isPast && 'available' === displayStatus )
+					? ' style="background:' + escapeHtml( specialColor ) + '19;color:' + escapeHtml( specialColor ) + ';"' : '';
+				attrs    = clickable ? ' data-date="' + iso + '"' : '';
+			}
+			if ( isPast ) cls = 'past';
 			if ( iso === state.date ) cls += ' selected';
-			var label = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
-			var dayStyle = ( specialColor && ! isPast && 'available' === displayStatus )
-				? ' style="background:' + escapeHtml( specialColor ) + '19;color:' + escapeHtml( specialColor ) + ';"' : '';
-			cells += '<div class="tc-avail-day ' + cls + '"' + dayStyle + ( clickable ? ' data-date="' + iso + '"' : '' ) + '>' +
+
+			cells += '<div class="tc-avail-day ' + cls + '"' + ( isPast ? '' : dayStyle + attrs ) + '>' +
 				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + '</div>';
 		}
 
 		var minMonth = 0;
 		var maxMonth = 6; // ~6 months ahead, same booking-horizon idea as the old 7-week cap
+
+		// Every OTHER special service gets its own legend entry too, since
+		// its color can show up right here via the overlay above, not just
+		// on its own calendar once picked.
+		var otherSpecials = state.services.filter( function ( s ) { return s.is_special && s.id !== service.id; } );
+		var extraLegend = otherSpecials.map( function ( s ) {
+			return '<span><span class="tc-swatch" style="background:' + escapeHtml( s.special_color || 'var(--brand)' ) + '"></span>' + escapeHtml( s.name ) + '</span>';
+		} ).join( '' );
 
 		return '<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>\u2190</button>' +
 			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>\u2192</button></div>' +
@@ -666,101 +713,10 @@
 				dowLabels().map( function ( l ) { return '<div class="tc-avail-dow">' + escapeHtml( l ) + '</div>'; } ).join( '' ) +
 				cells + '</div>' ) +
 			'<div class="tc-legend"><span><span class="tc-swatch" style="' + swatchStyle + '"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
-			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>' + escapeHtml( I18N.legendNotAvailable ) + '</span></div>';
-	}
-
-	// One full-cell color per day, not a color per service - a day is
-	// resolved to exactly one status: a special service's own color if any
-	// special service is open that day, else the usual "available" green
-	// if any normal (non-special) service is open, else "not available"
-	// gray. A special service's own color always wins over "available"
-	// when both would otherwise apply, since a guide opting into a
-	// special date already closes their regular calendar for that day
-	// (TC_Availability::guide_available_on()) - in the normal case there's
-	// only ever one real answer for a given date, not a mix to blend.
-	function combinedStatusFor( iso ) {
-		var special = null;
-		var normalOpen = false;
-		state.services.forEach( function ( svc ) {
-			var rows = state.allServiceGrids[ svc.id ] || [];
-			var row  = null;
-			rows.forEach( function ( r ) { if ( r.date === iso ) row = r; } );
-			// GitHub issue #73 - 'limited' still just reads as open, no
-			// different treatment than 'available' here either.
-			if ( ! row || 'off' === row.status ) {
-				return;
-			}
-			if ( svc.is_special ) {
-				if ( ! special ) special = svc; // first match wins on the rare day more than one special service is open
-			} else {
-				normalOpen = true;
-			}
-		} );
-		if ( special ) return { type: 'special', service: special };
-		if ( normalOpen ) return { type: 'available' };
-		return { type: 'off' };
-	}
-
-	// The "no service picked yet" calendar - every service at this
-	// location's own open dates, resolved to one color per day via
-	// combinedStatusFor() rather than one calendar per service. Only a
-	// special-service day is clickable (selectServiceDate() - jumps
-	// straight to that one service, same as picking its card then that
-	// date); a plain "available" day could mean any number of different
-	// normal services, so the customer picks a card first to see which
-	// dates are really that ONE service's own, same as before this
-	// combined view existed.
-	function renderCombinedCalendar() {
-		var bounds    = monthBoundsFromOffset( state.monthOffset );
-		var monthName = bounds.first.toLocaleDateString( jsLocale(), { month: 'long', year: 'numeric' } );
-		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
-		var daysInMo  = bounds.last.getDate();
-		var today     = nlToday();
-
-		var cells = '';
-		for ( var i = 0; i < firstDow; i++ ) {
-			cells += '<div class="tc-avail-day empty"></div>';
-		}
-		for ( var d = 1; d <= daysInMo; d++ ) {
-			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
-			var iso     = isoDate( dateObj );
-			var isPast  = dateObj < today;
-			var result  = isPast ? { type: 'off' } : combinedStatusFor( iso );
-
-			var clickable = ! isPast && 'special' === result.type;
-			// A normal "available" day isn't clickable here - it could be
-			// any number of different normal services, so it's shown as
-			// informational only (not-clickable keeps the cursor honest
-			// about that); only a special-service day, which always means
-			// exactly one specific service, is.
-			var cls       = isPast ? 'past' : ( 'off' === result.type ? 'off' : ( clickable ? 'available' : 'available not-clickable' ) );
-			var label     = 'off' === result.type ? I18N.statusClosed : I18N.statusOpen;
-			var dayStyle  = ( 'special' === result.type && result.service.special_color )
-				? ' style="background:' + escapeHtml( result.service.special_color ) + '19;color:' + escapeHtml( result.service.special_color ) + ';"' : '';
-			var attrs = clickable ? ' data-special-svc="' + result.service.id + '" data-special-date="' + iso + '"' : '';
-
-			cells += '<div class="tc-avail-day ' + cls + '"' + dayStyle + attrs + '>' +
-				'<span class="d">' + d + '</span>' + ( isPast ? '' : '<span class="status">' + escapeHtml( label ) + '</span>' ) + '</div>';
-		}
-
-		var minMonth = 0;
-		var maxMonth = 6;
-
-		var specialServices = state.services.filter( function ( svc ) { return svc.is_special; } );
-		var legend = '<span><span class="tc-swatch" style="background:var(--available)"></span>' + escapeHtml( I18N.legendAvailable ) + '</span>' +
 			'<span><span class="tc-swatch" style="background:var(--unavailable)"></span>' + escapeHtml( I18N.legendNotAvailable ) + '</span>' +
-			specialServices.map( function ( svc ) {
-				return '<span><span class="tc-swatch" style="background:' + escapeHtml( svc.special_color || 'var(--brand)' ) + '"></span>' + escapeHtml( svc.name ) + '</span>';
-			} ).join( '' );
-
-		return '<div class="tc-grid-nav"><button type="button" id="tc-prev-month"' + ( state.monthOffset <= minMonth ? ' disabled' : '' ) + '>←</button>' +
-			'<span class="range">' + monthName + '</span><button type="button" id="tc-next-month"' + ( state.monthOffset >= maxMonth ? ' disabled' : '' ) + '>→</button></div>' +
-			( state.gridLoading ? '<p>' + escapeHtml( I18N.loadingAvailability ) + '</p>' :
-				'<div class="tc-avail-cal">' +
-				dowLabels().map( function ( l ) { return '<div class="tc-avail-dow">' + escapeHtml( l ) + '</div>'; } ).join( '' ) +
-				cells + '</div>' ) +
-			'<div class="tc-legend">' + legend + '</div>';
+			extraLegend + '</div>';
 	}
+
 
 	function renderParty() {
 		var service = getService( state.serviceId );
@@ -976,43 +932,27 @@
 			};
 		}
 
-		// No service selected means the combined calendar is showing
-		// (renderCombinedCalendar()) - its own loadAllServiceGrids() needs
-		// to re-fetch for the new month instead of loadGrid(), which only
-		// applies once a service is picked.
-		function loadCalendarForCurrentMonth() {
-			if ( state.serviceId ) {
-				loadGrid();
-			} else {
-				loadAllServiceGrids();
-			}
-		}
 		var prevMonth = document.getElementById( 'tc-prev-month' );
-		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadCalendarForCurrentMonth(); };
+		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadGrid(); loadSpecialOverlays(); };
 		var nextMonth = document.getElementById( 'tc-next-month' );
-		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadCalendarForCurrentMonth(); };
+		if ( nextMonth ) nextMonth.onclick = function () { state.monthOffset = Math.min( 6, state.monthOffset + 1 ); loadGrid(); loadSpecialOverlays(); };
 
 		// GitHub issue #21 - picking a ceremony card no longer implies a
 		// date; it just swaps which service's calendar is shown below, and
 		// stays on this step (GitHub issue #42 - service cards and the
-		// calendar are back on one view together). Follow-up: clicking the
-		// already-selected card again deselects it, back to the combined
-		// "every service" calendar (renderCombinedCalendar()) rather than
-		// leaving no way back to it once a card's been picked.
+		// calendar are back on one view together).
 		root.querySelectorAll( '[data-svc-select]' ).forEach( function ( el ) {
 			el.onclick = function () {
 				var id = parseInt( el.dataset.svcSelect, 10 );
-				state.serviceId  = ( id === state.serviceId ) ? null : id;
+				if ( id === state.serviceId ) return;
+				state.serviceId  = id;
 				state.date       = null;
 				state.monthOffset = 0;
 				state.extraQty   = {};
 				state.partySize  = 1;
 				state.guests     = [];
-				if ( state.serviceId ) {
-					loadGrid();
-				} else {
-					loadAllServiceGrids();
-				}
+				loadGrid();
+				loadSpecialOverlays();
 			};
 		} );
 
@@ -1026,10 +966,10 @@
 			};
 		} );
 
-		// The combined calendar's own special-service day cells (no
-		// service picked yet - see combinedStatusFor()/renderCombinedCalendar()) -
-		// jumps straight to that one service, same result as picking its
-		// card above then this date.
+		// A special service's own open date, overlaid on whichever (normal)
+		// service's calendar is currently showing (specialOverlayFor() in
+		// renderAvailabilityCalendar()) - jumps straight to that one
+		// service, same result as picking its card above then this date.
 		root.querySelectorAll( '.tc-avail-day[data-special-svc]' ).forEach( function ( el ) {
 			el.onclick = function () {
 				selectServiceDate( parseInt( el.dataset.specialSvc, 10 ), el.dataset.specialDate );
@@ -1119,25 +1059,19 @@
 				if ( requestedLocation !== state.locationId ) return;
 				state.services       = services;
 				state.servicesLoading = false;
-				// The previously selected service might not be offered at
-				// this location (e.g. customer went Back and picked a
-				// different one) - drop it rather than carry over a
-				// selection that no longer applies here.
+				// The previously selected/defaulted service might not be
+				// offered at this location (e.g. customer went Back and
+				// picked a different one) - drop it so a fresh valid
+				// default gets picked below.
 				if ( state.serviceId && ! getService( state.serviceId ) ) {
 					state.serviceId = null;
 				}
-				render();
-				// No service is auto-picked here (follow-up request) - land
-				// on the combined "every service, one color per day" view
-				// by default (renderCombinedCalendar()) and only narrow to
-				// one service's own calendar once the customer actually
-				// picks a card, or already had one picked (e.g. back from
-				// a later step).
-				if ( state.serviceId ) {
-					loadGrid();
-				} else {
-					loadAllServiceGrids();
+				if ( ! state.serviceId && state.services.length ) {
+					state.serviceId = state.services[ 0 ].id;
 				}
+				render();
+				loadGrid();
+				loadSpecialOverlays();
 			} )
 			.catch( function ( err ) {
 				if ( requestedLocation !== state.locationId ) return;
@@ -1170,57 +1104,55 @@
 			} );
 	}
 
-	// Fetches every service's own grid at this location for the currently
-	// viewed month, powering renderCombinedCalendar() - the "no service
-	// picked yet" view (a colored dot per service on any date it's open,
-	// see state.allServiceGrids). Fired alongside the month-nav/location
-	// transitions that change what it needs to reflect, whenever no
-	// service is currently selected.
-	function loadAllServiceGrids() {
-		state.gridLoading = true;
-		render();
-		var bounds = monthBoundsFromOffset( state.monthOffset );
-		var start  = isoDate( bounds.first );
-		var end    = isoDate( bounds.last );
+	// Fetches every OTHER special service offered at this location's own
+	// grid for the currently viewed month, so renderAvailabilityCalendar()
+	// can overlay its color on the currently selected (normal) service's
+	// calendar for any date one of them is open - see the note on
+	// state.specialGrids above. Fired alongside loadGrid() at every point
+	// that changes what it needs to reflect (location, service, month).
+	function loadSpecialOverlays() {
+		var bounds  = monthBoundsFromOffset( state.monthOffset );
+		var start   = isoDate( bounds.first );
+		var end     = isoDate( bounds.last );
 		// Guards against a stale batch landing after the customer moved on
-		// (changed location/month again before these resolved) - same idea
-		// as loadGrid()'s requestedService guard.
-		var token = state.locationId + ':' + state.monthOffset;
-		state.allServiceGridsToken = token;
+		// (changed service/location/month again before these resolved) -
+		// same idea as loadGrid()'s requestedService guard, just covering
+		// every axis this fetch depends on in one token.
+		var token = state.locationId + ':' + state.serviceId + ':' + state.monthOffset;
+		state.specialOverlayToken = token;
 
-		if ( ! state.services.length ) {
-			state.allServiceGrids = {};
-			state.gridLoading     = false;
+		var specials = state.services.filter( function ( s ) { return s.is_special && s.id !== state.serviceId; } );
+		if ( ! specials.length ) {
+			state.specialGrids = {};
 			render();
 			return;
 		}
 
-		Promise.all( state.services.map( function ( s ) {
+		Promise.all( specials.map( function ( s ) {
 			return apiGet( withLang( '/availability?service_id=' + s.id + '&location_id=' + state.locationId + '&start=' + start + '&end=' + end ) )
 				.then( function ( rows ) { return { id: s.id, rows: rows }; } )
-				.catch( function () { return { id: s.id, rows: [] }; } ); // one service's grid failing shouldn't break the rest of the combined calendar
+				.catch( function () { return { id: s.id, rows: [] }; } ); // one special service's overlay failing shouldn't break the main calendar
 		} ) ).then( function ( results ) {
-			if ( token !== state.allServiceGridsToken ) return;
+			if ( token !== state.specialOverlayToken ) return;
 			var grids = {};
 			results.forEach( function ( r ) { grids[ r.id ] = r.rows; } );
-			state.allServiceGrids = grids;
-			state.gridLoading     = false;
+			state.specialGrids = grids;
 			render();
 		} );
 	}
 
-	// Switches straight to a special service spotted via the combined
-	// calendar (no service picked yet - see combinedStatusFor()/
-	// renderCombinedCalendar()), per the request "if client select that
-	// date, service selection at top should auto change". Reuses the grid
-	// already fetched for the combined view as the new state.grid, rather
-	// than a redundant loadGrid() round trip before goNext() can safely
-	// read partySizeMax()/selectedGridCell() for it.
+	// Switches straight to a special service spotted via the overlay on
+	// another service's own calendar (GitHub follow-up to #71/#72 - "if
+	// client select that date, service selection at top should auto
+	// change") - reuses the grid already fetched for the overlay itself as
+	// the new state.grid, rather than a redundant loadGrid() round trip
+	// before goNext() can safely read partySizeMax()/selectedGridCell()
+	// for it.
 	function selectServiceDate( serviceId, iso ) {
-		state.serviceId       = serviceId;
-		state.date             = iso;
-		state.grid              = state.allServiceGrids[ serviceId ] || [];
-		state.allServiceGrids  = {}; // now showing that service's own calendar - nothing left to overlay onto it
+		state.serviceId    = serviceId;
+		state.date          = iso;
+		state.grid           = state.specialGrids[ serviceId ] || [];
+		state.specialGrids   = {}; // now showing that service's own calendar - nothing left to overlay onto it
 		state.extraQty  = {};
 		state.partySize = 1;
 		state.guests    = [];

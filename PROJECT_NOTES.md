@@ -1576,61 +1576,55 @@ service with the special one closed showed no dot, and clicking the dot
 correctly swapped to "Volle Maan Ceremonie" and advanced to the next
 step with that date already selected.
 
-## No service pre-selected on step 2 - a combined "every service" calendar instead
+## Step 2's calendar: first service pre-selected again, special dates overlaid on it
 
-Follow-up: the service step used to auto-pick the first service in the
-list the moment its catalog loaded, immediately narrowing the calendar
-to just that one. Landing state is now no selection at all -
-`loadServicesForLocation()` no longer defaults `state.serviceId` to
-`state.services[0].id`, it's simply left unset unless the customer
-already had a valid one (e.g. back from a later step).
+This went through three shapes before landing here, each a direct
+response to feedback on the previous one - worth recording all three
+since the "why not X" reasoning matters for whoever touches this next:
 
-With nothing picked, `renderCombinedCalendar()` shows instead of
-nothing. First attempt used a small colored dot per service on each date
-it was open (several side by side on a day more than one was open) -
-explicit feedback afterward was to drop the dots and color the whole
-cell instead, with a simpler rule behind it: `combinedStatusFor()`
-resolves each day to exactly ONE status - a special service's own color
-if any special service is open that day, else the plain "available"
-green if any normal (non-special) one is, else "not available" gray. A
-special service's color always wins over "available" when both would
-otherwise apply, since a guide opting into a special date already closes
-their regular calendar for that day
-(`TC_Availability::guide_available_on()`) - in practice there's only
-ever one real answer for a given date, not a mix to blend, so collapsing
-several services' dots down to one color per day loses nothing. A plain
-"available" (green) day isn't clickable, since it could be any number of
-different normal services - only a special-service day is
-(`selectServiceDate()`, renamed from the dot-era
-`selectSpecialOverlayDate()`), since that always means exactly one
-specific service. The legend underneath now reads "Available" / "Not
-available" (matching the single-service view's own) plus one entry per
-special service actually offered at this location.
+1. Auto-picking the first service was removed - landing state became no
+   selection, with a new combined calendar showing every service at once
+   when nothing was picked.
+2. That combined calendar first used a small colored dot per service on
+   each open date (several side by side when more than one was open) -
+   changed to one full-cell color per day instead (a special service's
+   own color takes priority over the plain "available" green, since a
+   guide opting into a special date already closes their regular
+   calendar that day - `TC_Availability::guide_available_on()` - so
+   there's only ever one real status per date to show, not a mix).
+3. Final correction (this one): go back to always having a service
+   selected, defaulting to the first in the list
+   (`loadServicesForLocation()` picks `state.services[0].id` again when
+   nothing valid is already set) - customers shouldn't have to make an
+   extra choice before seeing anything. The combined "nothing selected"
+   calendar and its whole-cell coloring are gone -
+   `renderCombinedCalendar()`/`combinedStatusFor()`/
+   `loadAllServiceGrids()` all removed. In their place,
+   `renderAvailabilityCalendar()` (the original single-service view) now
+   overlays a special service's own full color on top of whichever
+   normal service's calendar is currently showing, for any date that
+   special service is open - full-cell (color, label, AND click target),
+   not a small marker, reusing the "one real status per date" reasoning
+   from step 2: `specialOverlayFor()` checks first, and only falls back
+   to the currently selected service's own status when no special
+   service is open that day. Clicking an overlaid date switches straight
+   to that special service (`selectServiceDate()`) and advances, reusing
+   the grid already fetched for the overlay rather than a redundant
+   round trip. Picking a different card still narrows the view to that
+   service's own calendar (plus its own overlays from any OTHER special
+   services) exactly as before any of this changed.
 
-Loading reuses the same `/availability?service_id=&location_id=&start=&end=`
-endpoint the single-service view already calls, just once per service
-(`loadAllServiceGrids()`) instead of once for whichever's selected.
-Picking a card still narrows to that one service's own calendar exactly
-as before; clicking the SAME card again now deselects it back to the
-combined view, rather than leaving no way back to it once something's
-picked.
+The legend underneath a single-service calendar now also lists every
+OTHER special service that could show up as an overlay there, alongside
+the regular Available/Not available pair, so an overlaid color is always
+identifiable.
 
-The dot-based single-service "overlay" (surfacing other special
-services' open dates as a small dot while looking at one particular
-service's own calendar) was removed entirely along with the dots
-themselves, rather than kept as a second dot-shaped feature - with every
-service already visible up front on the new combined default view, it
-had lost its original reason to exist, and the ask was specifically to
-stop using dots as a pattern, not just on this one screen.
-
-Verified with a mocked-fetch browser harness matching the exact scenario
-described: three consecutive dates green ("Open", normal service), the
-next gray ("Closed"), the one after that in the special service's own
-brown ("Open") - confirmed the green days carry no click handler
-(`.not-clickable`) while the brown one does and correctly reports that
-service's id, clicking it switches straight to that service with the
-date pre-selected and advances, and the legend lists Available/Not
-available/the special service's own name and color.
+Verified with a mocked-fetch browser harness: "Individuele ceremonie"
+auto-selected on arrival (no extra click needed), its own open date
+green, a date only the special "Volle Maan Ceremonie" has open shown in
+that service's own brown color on the SAME calendar, and clicking that
+overlaid date switching straight to "Volle Maan Ceremonie" with the date
+already selected.
 
 ## Testing performed
 
