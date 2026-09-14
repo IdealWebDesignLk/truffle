@@ -393,7 +393,21 @@
 		if ( 'service' === key ) {
 			loadServicesForLocation();
 		}
-		window.scrollTo( { top: root.offsetTop - 20, behavior: 'smooth' } );
+		// GitHub bug report - on the live site (an Elementor page), every
+		// step transition scrolled all the way to the actual top of the
+		// page instead of just back to the top of this widget.
+		// root.offsetTop is relative to the nearest POSITIONED ancestor
+		// (an element with position: relative/absolute/fixed/sticky), not
+		// the document - Elementor wraps widgets in exactly such a
+		// container, so offsetTop read 0 (this widget is that wrapper's
+		// only child) even though the widget itself sat ~740px down the
+		// real page, and window.scrollTo({top: 0 - 20}) clamps straight to
+		// the document's own top. getBoundingClientRect().top is relative
+		// to the current viewport regardless of any positioned ancestors -
+		// adding the page's current scroll position converts that back
+		// into the same "distance from the true top of the document"
+		// figure offsetTop was supposed to provide.
+		window.scrollTo( { top: root.getBoundingClientRect().top + window.scrollY - 20, behavior: 'smooth' } );
 	}
 
 	function render() {
@@ -575,7 +589,7 @@
 			guideMini +
 			'<div class="tc-loc-list-col"><div class="tc-loc-list">' + list + '</div></div>' +
 			'</div>' +
-			'<div class="tc-nav"><span></span><button class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>' + escapeHtml( I18N.continue ) + '</button></div>';
+			'<div class="tc-nav"><span></span><button type="button" class="tc-btn primary" id="tc-next"' + ( state.locationId ? '' : ' disabled' ) + '>' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	// GitHub issue #21 - "pick a ceremony and date in one click on a 7-day
@@ -627,7 +641,7 @@
 			'<p class="tc-section-label">' + escapeHtml( I18N.chooseServiceLabel ) + '</p>' +
 			cardsArea +
 			calendarArea +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><span></span></div>';
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><span></span></div>';
 	}
 
 	function renderAvailabilityCalendar( service ) {
@@ -736,7 +750,7 @@
 			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
 			'<span class="val">' + state.partySize + '</span>' +
 			'<button type="button" id="tc-party-plus"' + ( state.partySize >= max ? ' disabled' : '' ) + '>+</button></div></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button type="button" class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	function guestField( idx, key, label, value, placeholder, type ) {
@@ -763,7 +777,7 @@
 		return '<h2 class="tc-title">' + escapeHtml( I18N.yourGroupDetails ) + '</h2>' +
 			'<p class="tc-sub">' + escapeHtml( I18N.yourGroupDetailsSub ) + '</p>' +
 			blocks +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button type="button" class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	// GitHub issue #48 - an extra with "limit by seats" ticked (admin: Service
@@ -811,7 +825,7 @@
 			} ).join( '' );
 
 		return '<h2 class="tc-title">' + escapeHtml( I18N.extrasQuantity ) + '</h2>' + selectionSummary() + rows +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button type="button" class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 
 	function renderInfo() {
@@ -821,7 +835,7 @@
 			field( 'lastName', I18N.lastName, i.lastName, 'Doe' ) +
 			field( 'email', I18N.email, i.email, 'jane@example.com', 'email' ) +
 			field( 'phone', I18N.phone, i.phone, '+31 6 12345678', 'tel' ) +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button type="button" class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}
 	function field( id, label, value, placeholder, type ) {
 		var err = state.fieldErrors[ id ];
@@ -868,8 +882,8 @@
 			basePriceLine +
 			extraLines +
 			'<div class="tc-rline total"><span class="l">' + escapeHtml( I18N.total ) + '</span><span class="r">' + fmt( grandTotal() ) + '</span></div>' +
-			'<div class="tc-nav"><button class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button>' +
-			'<button class="tc-btn primary" id="tc-checkout"' + ( state.submitting ? ' disabled' : '' ) + '>' +
+			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button>' +
+			'<button type="button" class="tc-btn primary" id="tc-checkout"' + ( state.submitting ? ' disabled' : '' ) + '>' +
 			escapeHtml( state.submitting ? I18N.processing : I18N.continueToCheckout ) + '</button></div>';
 	}
 

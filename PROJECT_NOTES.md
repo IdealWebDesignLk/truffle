@@ -1626,6 +1626,50 @@ that service's own brown color on the SAME calendar, and clicking that
 overlaid date switching straight to "Volle Maan Ceremonie" with the date
 already selected.
 
+## Every step jumped to the actual top of the page, not just the widget
+
+Reported directly from the live site (truffelceremonie.com/tarieven-reserveren/,
+an Elementor page): clicking Next/Back, or picking a date, scrolled all
+the way to the top of the page instead of back to the top of the booking
+widget. `setStep()` (called after every one of those - see
+`goNext()`/`goBack()`/the date-click handler) has always done
+`window.scrollTo({ top: root.offsetTop - 20, ... })`, meant to bring the
+newly-shown step back into view without leaving the customer scrolled
+down past it.
+
+Root cause, confirmed directly on the live page rather than guessed at:
+`Element.offsetTop` is relative to the nearest POSITIONED ancestor (one
+with `position: relative/absolute/fixed/sticky`), not the document -
+Elementor wraps every widget in exactly such a container
+(`.elementor-element.elementor-widget-shortcode`), and `#tc-booking-root`
+is that wrapper's only child, so `root.offsetTop` read `0` there even
+though the widget itself sat ~740px down the real page
+(`root.getBoundingClientRect().top + window.scrollY` gave the correct
+figure). `window.scrollTo({ top: 0 - 20 })` clamps straight to the
+document's own top - exactly the reported symptom. Fixed by using
+`getBoundingClientRect().top + window.scrollY` instead, which is
+relative to the viewport regardless of any positioned ancestors, so
+adding the page's current scroll position always recovers the true
+"distance from the top of the document" `offsetTop` was supposed to
+provide.
+
+This class of bug is specifically why "check with an actual rendered
+page/site" earlier in this file (the guide-calendar caching issue, the
+email charset issue) keeps paying off - a standalone test page has no
+Elementor wrapper, no positioned ancestor, and `offsetTop` would have
+read the very same value `getBoundingClientRect()` does, so this
+specific bug could only ever be caught against the real live page's
+actual DOM structure, not a local reproduction.
+
+While in this file: `tc-next`/`tc-back`/`tc-checkout` were missing an
+explicit `type="button"`, defaulting to `type="submit"` per the HTML
+spec - harmless here (confirmed the widget isn't inside a `<form>` on
+the live page) but a landmine if it ever is on some other embed, and
+inconsistent with every other JS-driven button in this file
+(`tc-prev-month`, `tc-party-minus`, ...), which already specify it.
+Added for consistency/defense in depth, not because it explained this
+particular bug.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
