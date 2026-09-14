@@ -345,9 +345,21 @@
 		var service = getService( state.serviceId );
 		return ( service && service.allow_party ) ? Math.max( 1, state.partySize ) : 1;
 	}
+	// Mirrors TC_Availability::total_for_party() server-side (also used by
+	// create_booking() for what's actually charged) - the customer
+	// themself pays the base price, each additional person pays
+	// service.extra_person_price instead, which can genuinely differ (the
+	// server already resolves it to the base price when never configured
+	// separately, so this needs no fallback of its own).
+	function servicePriceForParty( service ) {
+		if ( ! service.allow_party ) {
+			return service.price;
+		}
+		return service.price + Math.max( 0, state.partySize - 1 ) * service.extra_person_price;
+	}
 	function grandTotal() {
 		var service = getService( state.serviceId );
-		return ( service ? service.price * partyMultiplier() : 0 ) + extrasTotal();
+		return ( service ? servicePriceForParty( service ) : 0 ) + extrasTotal();
 	}
 	var SITE_TZ = 'Europe/Amsterdam';
 
@@ -749,11 +761,24 @@
 		}
 
 		var limited = max < Math.max( 1, service.max_capacity );
+		// GitHub follow-up - an extra person's price can now genuinely
+		// differ from the customer's own (service.extra_person_price,
+		// resolved server-side to service.price when never configured
+		// separately) - shown as two figures rather than one flat
+		// "per person" line whenever that's actually the case, so the
+		// price breakdown stays accurate instead of implying a flat rate
+		// that no longer applies.
+		var sameForAll = service.extra_person_price === service.price;
+		var priceLine  = sameForAll
+			? i18nFmt( I18N.perPersonSuffix, fmt( service.price ) )
+			: i18nFmt( I18N.firstAndExtraPersonPrice, fmt( service.price ), fmt( service.extra_person_price ) );
 		return '<h2 class="tc-title">' + escapeHtml( I18N.howManyPeople ) + '</h2>' +
-			'<p class="tc-sub">' + escapeHtml( i18nFmt( I18N.includesYouUpTo, max, 1 === max ? I18N.personUnit : I18N.peopleUnit ) ) +
-			( limited ? ' ' + escapeHtml( I18N.limitedAvailabilityNote ) : '' ) + ' ' + escapeHtml( I18N.basePriceChargedPerPerson ) + '</p>' +
+			'<p class="tc-sub"><strong>' + escapeHtml( I18N.includesYourselfLabel ) + '</strong> ' +
+			escapeHtml( i18nFmt( I18N.upToPeopleTotal, max, 1 === max ? I18N.personUnit : I18N.peopleUnit ) ) +
+			( limited ? ' ' + escapeHtml( I18N.limitedAvailabilityNote ) : '' ) +
+			( sameForAll ? ' ' + escapeHtml( I18N.basePriceChargedPerPerson ) : '' ) + '</p>' +
 			'<div class="tc-party-row"><div><div class="en">' + escapeHtml( I18N.totalInGroup ) + '</div>' +
-			'<div class="ep">' + escapeHtml( i18nFmt( I18N.perPersonSuffix, fmt( service.price ) ) ) + '</div></div>' +
+			'<div class="ep">' + escapeHtml( priceLine ) + '</div></div>' +
 			'<div class="tc-qty"><button type="button" id="tc-party-minus"' + ( state.partySize <= 1 ? ' disabled' : '' ) + '>−</button>' +
 			'<span class="val">' + state.partySize + '</span>' +
 			'<button type="button" id="tc-party-plus"' + ( state.partySize >= max ? ' disabled' : '' ) + '>+</button></div></div>' +
@@ -783,6 +808,7 @@
 
 		return '<h2 class="tc-title">' + escapeHtml( I18N.yourGroupDetails ) + '</h2>' +
 			'<p class="tc-sub">' + escapeHtml( I18N.yourGroupDetailsSub ) + '</p>' +
+			'<p class="tc-sub"><strong>' + escapeHtml( I18N.ownDetailsLaterNote ) + '</strong></p>' +
 			blocks +
 			'<div class="tc-nav"><button type="button" class="tc-btn ghost" id="tc-back">← ' + escapeHtml( I18N.back ) + '</button><button type="button" class="tc-btn primary" id="tc-next">' + escapeHtml( I18N.continue ) + '</button></div>';
 	}

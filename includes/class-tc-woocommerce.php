@@ -243,9 +243,12 @@ class TC_Woocommerce {
 			return new WP_Error( 'tc_order_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
 
-		// "Bring anyone with you" (GitHub issue #6): base price is only
-		// multiplied for services that opt into it - see the matching
-		// comment in TC_Rest_Api::create_booking().
+		// "Bring anyone with you" (GitHub issue #6): the customer themself
+		// pays the base price, each additional person pays the service's
+		// own extra_person_price instead (can genuinely differ - see
+		// TC_Availability::total_for_party(), also used in
+		// TC_Rest_Api::create_booking() so this fee line always matches
+		// the booking's own already-charged total).
 		//
 		// $date itself stays the raw 'Y-m-d' from _tc_date (nothing else in
 		// this function needs a display version) - $date_display is only
@@ -258,7 +261,6 @@ class TC_Woocommerce {
 		// that exact "31 oktober 2026" shape regardless of whatever the
 		// site's own Settings -> General date format happens to be set to.
 		$date_display      = date_i18n( 'j F Y', strtotime( $date ) );
-		$party_multiplier = $service['allow_party'] ? $party_size : 1;
 		$fee_label         = ( $service['allow_party'] && $party_size > 1 )
 			? sprintf(
 				// WPML support - Dutch (this site's WPML default language),
@@ -277,7 +279,7 @@ class TC_Woocommerce {
 			: sprintf( /* translators: 1: service name, 2: date */ __( '%1$s (%2$s)', 'tc-booking' ), $service['name'], $date_display );
 
 		$service_product = self::get_or_create_placeholder_product( 'tc-service-' . $service_id, $service['name'] );
-		self::add_product_line( $order, $service_product, $fee_label, $service['price'] * $party_multiplier );
+		self::add_product_line( $order, $service_product, $fee_label, TC_Availability::total_for_party( $service, $party_size ) );
 
 		if ( is_array( $extras ) ) {
 			foreach ( $extras as $extra ) {

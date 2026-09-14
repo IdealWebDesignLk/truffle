@@ -121,7 +121,16 @@ class TC_Booking_Shortcode {
 					// i18nFmt() in booking-app.js just fills placeholders in
 					// the order they appear, so don't reorder these two.
 					/* translators: %d: max people, %s: "persoon" or "personen" */
-					'includesYouUpTo'         => __( 'Inclusief jezelf — tot %d %s in totaal voor deze ceremonie', 'tc-booking' ),
+					// Split into a bolded lead phrase (wrapped in <strong> in
+					// renderParty(), not here - WPML translates this same as
+					// any other string regardless) plus the rest of the
+					// sentence, per request to bold "Inclusief jezelf"
+					// specifically.
+					'includesYourselfLabel'   => __( 'Inclusief jezelf', 'tc-booking' ),
+					/* translators: %d/%s here are positional, not sprintf's
+					   %1$d/%2$s - see i18nFmt()'s own comment in
+					   booking-app.js. 1: max people, 2: "persoon"/"personen" */
+					'upToPeopleTotal'         => __( '— tot %d %s in totaal voor deze ceremonie', 'tc-booking' ),
 					'personUnit'              => __( 'persoon', 'tc-booking' ),
 					'peopleUnit'              => __( 'personen', 'tc-booking' ),
 					'limitedAvailabilityNote' => __( '(beperkte beschikbaarheid op deze datum)', 'tc-booking' ),
@@ -129,10 +138,24 @@ class TC_Booking_Shortcode {
 					'totalInGroup'            => __( 'Totaal in je groep', 'tc-booking' ),
 					/* translators: %s: formatted price */
 					'perPersonSuffix'         => __( '%s per persoon', 'tc-booking' ),
+					// GitHub follow-up - shown instead of perPersonSuffix
+					// above when a service's extra-person price differs
+					// from its base price (render Party()).
+					/* translators: %s here is positional (twice), not
+					   sprintf's %1$s/%2$s. 1: base price, 2: extra person price */
+					'firstAndExtraPersonPrice' => __( '%s voor jezelf, %s per extra persoon', 'tc-booking' ),
 
 					// Guests step
 					'yourGroupDetails'        => __( 'Gegevens van je groep', 'tc-booking' ),
 					'yourGroupDetailsSub'     => __( 'We hebben contactgegevens nodig van iedereen die met je meekomt, zodat we hen indien nodig kunnen bereiken.', 'tc-booking' ),
+					// This step only ever appears when the full step sequence
+					// is location/service/party/extras/guests/details/review
+					// (guests requires allow_party, which also guarantees the
+					// party step exists before it) - "details" (where the
+					// customer fills in their OWN name/email/phone) is
+					// therefore always literally step 6 whenever this note
+					// shows, not just usually.
+					'ownDetailsLaterNote'     => __( 'Je kunt jouw eigen gegevens invullen in stap 6.', 'tc-booking' ),
 					/* translators: %d: guest number */
 					'guestHeading'            => __( 'Gast %d', 'tc-booking' ),
 					'fullName'                => __( 'Volledige naam', 'tc-booking' ),

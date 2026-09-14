@@ -494,13 +494,23 @@ class TC_Availability {
 		if ( ! $post || TC_CPT::SERVICE !== $post->post_type ) {
 			return null;
 		}
-		$extras             = get_post_meta( $service_id, '_tc_extras', true );
-		$overrides          = get_post_meta( $service_id, '_tc_location_capacity_overrides', true );
-		$special_locations  = get_post_meta( $service_id, '_tc_special_locations', true );
+		$extras              = get_post_meta( $service_id, '_tc_extras', true );
+		$overrides           = get_post_meta( $service_id, '_tc_location_capacity_overrides', true );
+		$special_locations   = get_post_meta( $service_id, '_tc_special_locations', true );
+		$price               = (float) get_post_meta( $service_id, '_tc_price', true );
+		$extra_person_price  = get_post_meta( $service_id, '_tc_extra_person_price', true );
 		return array(
 			'id'                 => $post->ID,
 			'name'               => $post->post_title,
-			'price'              => (float) get_post_meta( $service_id, '_tc_price', true ),
+			'price'              => $price,
+			// What each additional person (beyond the customer themself)
+			// costs for a "bring anyone with you" service - can genuinely
+			// differ from the base price above (e.g. a group ceremony
+			// priced per host, not per head). '' (never configured) falls
+			// back to the base price, matching the flat per-person pricing
+			// every service used before this field existed - an existing
+			// service's total doesn't change just because this shipped.
+			'extra_person_price' => ( '' === $extra_person_price ) ? $price : (float) $extra_person_price,
 			'duration_days'      => (int) get_post_meta( $service_id, '_tc_duration_days', true ) ?: 1,
 			'start_time'         => get_post_meta( $service_id, '_tc_start_time', true ),
 			'min_capacity'       => (int) get_post_meta( $service_id, '_tc_min_capacity', true ) ?: 1,
@@ -530,6 +540,30 @@ class TC_Availability {
 			// directly for a specific booking/date.
 			'location_capacity_overrides' => is_array( $overrides ) ? $overrides : array(),
 		);
+	}
+
+	/**
+	 * The service-price portion of a booking's total (i.e. everything
+	 * except extras, which callers add separately - see create_booking()
+	 * in class-tc-rest-api.php and save_new_booking() in
+	 * class-tc-meta-boxes.php, both of which used to just do
+	 * `$service['price'] * $party_size` inline). The customer themself is
+	 * always charged the base price; each additional person is charged
+	 * $service['extra_person_price'] instead, which get_service_data()
+	 * already resolves to the base price when that field was never set -
+	 * so this collapses to the old flat `price * party_size` behavior for
+	 * every service that hasn't configured a different one.
+	 *
+	 * @param array $service    From get_service_data().
+	 * @param int   $party_size Ignored (treated as 1) for a service that
+	 *                          doesn't allow_party.
+	 */
+	public static function total_for_party( $service, $party_size ) {
+		if ( empty( $service['allow_party'] ) ) {
+			return $service['price'];
+		}
+		$party_size = max( 1, (int) $party_size );
+		return $service['price'] + ( $party_size - 1 ) * $service['extra_person_price'];
 	}
 
 	/**

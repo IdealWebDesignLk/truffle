@@ -226,7 +226,8 @@ class TC_Meta_Boxes {
 
 	public static function render_service( $post ) {
 		wp_nonce_field( 'tc_save_service', 'tc_service_nonce' );
-		$price         = get_post_meta( $post->ID, '_tc_price', true );
+		$price               = get_post_meta( $post->ID, '_tc_price', true );
+		$extra_person_price  = get_post_meta( $post->ID, '_tc_extra_person_price', true );
 		$duration_days = get_post_meta( $post->ID, '_tc_duration_days', true );
 		$start_time    = get_post_meta( $post->ID, '_tc_start_time', true );
 		$min_capacity  = get_post_meta( $post->ID, '_tc_min_capacity', true );
@@ -305,7 +306,12 @@ class TC_Meta_Boxes {
 						<input type="checkbox" id="tc_allow_party" name="tc_allow_party" value="1" <?php checked( '1', $allow_party ); ?>>
 						<?php esc_html_e( 'Let the customer bring extra people to this ceremony', 'tc-booking' ); ?>
 					</label>
-					<p class="description"><?php esc_html_e( 'Adds a group-size step to the booking flow (capped at Max capacity above, including the customer themself) and collects each extra person\'s name, email, and phone. The base price is charged per person.', 'tc-booking' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Adds a group-size step to the booking flow (capped at Max capacity above, including the customer themself) and collects each extra person\'s name, email, and phone. The customer themself is charged the Price above; each additional person is charged the Extra person price below.', 'tc-booking' ); ?></p>
+					<div style="margin-top:10px;">
+						<label for="tc_extra_person_price"><?php esc_html_e( 'Extra person price (EUR)', 'tc-booking' ); ?></label><br>
+						<input type="number" step="0.01" min="0" id="tc_extra_person_price" name="tc_extra_person_price" value="<?php echo esc_attr( $extra_person_price ); ?>" class="regular-text" placeholder="<?php echo esc_attr( $price ); ?>">
+						<p class="description"><?php esc_html_e( 'What each additional person costs, on top of the customer\'s own Price above - can be different (e.g. a lower rate per extra guest). Leave blank to charge the same as Price above, same as before this field existed.', 'tc-booking' ); ?></p>
+					</div>
 				</td>
 			</tr>
 			<tr>
@@ -446,11 +452,12 @@ class TC_Meta_Boxes {
 		}
 
 		$fields = array(
-			'tc_price'         => '_tc_price',
-			'tc_duration_days' => '_tc_duration_days',
-			'tc_start_time'    => '_tc_start_time',
-			'tc_min_capacity'  => '_tc_min_capacity',
-			'tc_max_capacity'  => '_tc_max_capacity',
+			'tc_price'               => '_tc_price',
+			'tc_extra_person_price'  => '_tc_extra_person_price',
+			'tc_duration_days'       => '_tc_duration_days',
+			'tc_start_time'          => '_tc_start_time',
+			'tc_min_capacity'        => '_tc_min_capacity',
+			'tc_max_capacity'        => '_tc_max_capacity',
 		);
 		foreach ( $fields as $post_key => $meta_key ) {
 			if ( isset( $_POST[ $post_key ] ) ) {
@@ -1127,7 +1134,7 @@ class TC_Meta_Boxes {
 			return;
 		}
 
-		$total = is_numeric( $total_input ) ? (float) $total_input : ( $service['price'] * ( $service['allow_party'] ? $party_size : 1 ) ) + $extras_total;
+		$total = is_numeric( $total_input ) ? (float) $total_input : TC_Availability::total_for_party( $service, $party_size ) + $extras_total;
 
 		update_post_meta( $post_id, '_tc_service_id', $service_id );
 		update_post_meta( $post_id, '_tc_location_id', $location_id );

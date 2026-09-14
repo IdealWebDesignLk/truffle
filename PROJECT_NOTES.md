@@ -1680,6 +1680,52 @@ Verified directly against the live page: after scrolling, the widget's
 own top now sits 112px down the viewport (92 + the pre-existing 20px
 margin), clear of the header rather than hidden behind it.
 
+## A separate price for each extra person, plus two copy tweaks
+
+**Extra person price.** A "bring anyone with you" service used to charge
+every person, including the customer themself, at the exact same flat
+`price` - requested as no longer always true, since it can vary by
+service (a group ceremony might price the host differently from each
+additional guest). New Service edit screen field, "Extra person price"
+(next to "Bring anyone with you"), stored as `_tc_extra_person_price` -
+left blank, it falls back to the base Price, so an existing service's
+total doesn't change just because this field now exists.
+`TC_Availability::get_service_data()` resolves that fallback once,
+centrally, so every caller downstream can just trust
+`$service['extra_person_price']` directly. New
+`TC_Availability::total_for_party( $service, $party_size )` is the one
+place "customer pays Price, each additional person pays
+extra_person_price" is actually computed, replacing three separate
+inline `price * party_size` calculations that would otherwise have
+needed the exact same fix independently - `TC_Rest_Api::create_booking()`
+(what's actually charged), `TC_Woocommerce::create_order_for_booking()`
+(the order's own fee line, which must match), and
+`TC_Meta_Boxes::save_new_booking()`'s total fallback (only used when the
+admin leaves the Total field blank). `public/js/booking-app.js` got a
+matching `servicePriceForParty()` for the front-end's own live total
+preview, and `renderParty()`'s price line now shows two figures ("€195
+voor jezelf, €150 per extra persoon") instead of one flat "per persoon"
+line whenever they actually differ, falling back to the original single
+line otherwise.
+
+**Two copy changes**, both in `renderParty()`/`renderGuests()`:
+"Inclusief jezelf" is now bold (split into its own `includesYourselfLabel`
+i18n string wrapped in `<strong>`, separate from the rest of that
+sentence, `upToPeopleTotal`, so each half stays independently
+translatable); and the guests step gained a new bold reassurance line,
+"Je kunt jouw eigen gegevens invullen in stap 6." - always accurate
+where it's shown, since the "guests" step only ever appears when the
+full 7-step sequence (location/service/party/extras/guests/details/review)
+is active, making "details" (where the customer's own contact info is
+collected) always literally step 6 in that case, not just usually.
+
+Verified with a standalone PHP test (`total_for_party()`/`get_service_data()`'s
+fallback, including the non-`allow_party` case ignoring
+`extra_person_price` entirely) and a browser harness matching the exact
+scenario asked about: a service priced €195/€150, the party step showing
+both figures with "Inclusief jezelf" bold, and the guests step showing
+the new bold step-6 note.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

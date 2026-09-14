@@ -317,6 +317,12 @@ class TC_Rest_Api {
 				'name'          => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_name', $post->post_title ),
 				'description'   => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_description', $post->post_content ),
 				'price'         => $service['price'],
+				// What each additional person (beyond the customer
+				// themself) costs on a "bring anyone with you" service -
+				// already resolved to $service['price'] by
+				// get_service_data() when never configured separately, so
+				// the widget can always just use this value directly.
+				'extra_person_price' => $service['extra_person_price'],
 				'duration_days' => $service['duration_days'],
 				'start_time'    => $service['start_time'],
 				'min_capacity'  => $service['min_capacity'],
@@ -616,12 +622,15 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_no_guide', __( 'Geen gids beschikbaar op deze datum.', 'tc-booking' ), array( 'status' => 409 ) );
 		}
 
-		// Base price is only multiplied by party size for services that opt
-		// into "bring anyone with you" - services using the older extra-based
-		// convention keep charging per-extra, not per-person, exactly as
-		// before.
-		$party_multiplier = $service['allow_party'] ? $party_size : 1;
-		$total            = ( $service['price'] * $party_multiplier ) + $extras_total;
+		// Base price only applies to the customer themself; each additional
+		// person (services that opt into "bring anyone with you") is
+		// charged the service's own extra_person_price instead, which can
+		// genuinely differ from the base price - see
+		// TC_Availability::total_for_party(). Services using the older
+		// extra-based convention keep charging per-extra, not per-person,
+		// exactly as before (total_for_party() returns the flat base price
+		// for those).
+		$total = TC_Availability::total_for_party( $service, $party_size ) + $extras_total;
 
 		$booking_id = wp_insert_post(
 			array(
