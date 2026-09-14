@@ -71,6 +71,13 @@
 	var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 	var PHONE_RE = /^[0-9+()\-\s]{6,20}$/;
 
+	// The live site's theme has a fixed/sticky header this tall sitting on
+	// top of the page - scrolling a step's top edge to the literal top of
+	// the viewport (y=0) tucks it right underneath that header instead of
+	// leaving it visible. Subtracted from the scroll target in setStep()
+	// below, on top of the small breathing-room margin already there.
+	var STICKY_HEADER_HEIGHT = 92;
+
 	// Step list is dynamic, not fixed - "party" (group size) and "guests"
 	// (their contact details) only appear for services with "bring anyone
 	// with you" enabled (see GitHub issue #6), and "guests" only once the
@@ -407,7 +414,7 @@
 		// adding the page's current scroll position converts that back
 		// into the same "distance from the true top of the document"
 		// figure offsetTop was supposed to provide.
-		window.scrollTo( { top: root.getBoundingClientRect().top + window.scrollY - 20, behavior: 'smooth' } );
+		window.scrollTo( { top: root.getBoundingClientRect().top + window.scrollY - STICKY_HEADER_HEIGHT - 20, behavior: 'smooth' } );
 	}
 
 	function render() {

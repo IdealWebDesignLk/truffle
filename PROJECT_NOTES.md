@@ -1670,6 +1670,16 @@ inconsistent with every other JS-driven button in this file
 Added for consistency/defense in depth, not because it explained this
 particular bug.
 
+**Follow-up - the site's fixed header still covered the widget's top.**
+Once the scroll-target math itself was correct, the next step's top edge
+landed right at the very top of the viewport (y=0) - which tucks it
+directly underneath the live theme's fixed/sticky 92px header instead of
+leaving it visible. Added a `STICKY_HEADER_HEIGHT = 92` constant,
+subtracted from the scroll target alongside the existing small margin.
+Verified directly against the live page: after scrolling, the widget's
+own top now sits 112px down the viewport (92 + the pre-existing 20px
+margin), clear of the header rather than hidden behind it.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
