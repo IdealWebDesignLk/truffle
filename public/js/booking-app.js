@@ -772,7 +772,7 @@
 		var priceLine  = sameForAll
 			? i18nFmt( I18N.perPersonSuffix, fmt( service.price ) )
 			: i18nFmt( I18N.firstAndExtraPersonPrice, fmt( service.price ), fmt( service.extra_person_price ) );
-		return '<h2 class="tc-title">' + escapeHtml( I18N.howManyPeople ) + '</h2>' +
+		return '<h2 class="tc-title">' + escapeHtml( I18N.howManyPeople ) + '</h2>' + selectionSummary() +
 			'<p class="tc-sub"><strong>' + escapeHtml( I18N.includesYourselfLabel ) + '</strong> ' +
 			escapeHtml( i18nFmt( I18N.upToPeopleTotal, max, 1 === max ? I18N.personUnit : I18N.peopleUnit ) ) +
 			( limited ? ' ' + escapeHtml( I18N.limitedAvailabilityNote ) : '' ) +

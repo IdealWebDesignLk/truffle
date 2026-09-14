@@ -1726,6 +1726,18 @@ scenario asked about: a service priced €195/€150, the party step showing
 both figures with "Inclusief jezelf" bold, and the guests step showing
 the new bold step-6 note.
 
+**Follow-up - the party-size step was missing the selection summary
+chip.** Every screen after the service/date is picked shows a small pill
+("Groepsceremonie · zo 20 sep 2026" - `selectionSummary()`) confirming
+what's already selected, EXCEPT the party-size step itself, which
+skipped straight to "Hoeveel personen?" with no reminder of which
+ceremony/date it was even for. Reported from a screenshot circling the
+extras step's own chip and asking for the same on "the extra person
+selection slide." Added the one `selectionSummary()` call to
+`renderParty()`, same as `renderExtras()` already had - it's a no-op
+until `state.date` is set, which is always true by the time this step is
+reached (service+date are picked together, one step earlier).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
