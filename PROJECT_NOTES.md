@@ -1738,6 +1738,33 @@ selection slide." Added the one `selectionSummary()` call to
 until `state.date` is set, which is always true by the time this step is
 reached (service+date are picked together, one step earlier).
 
+## Service cards show their description instead of the duration badge, when set
+
+Requested as a "new field" for a description - but the Service CPT
+already has one: `'editor'` has been in its `supports` array since it
+was registered (`class-tc-cpt.php`, commented "editor = short
+customer-facing description"), and `get_services()` was already sending
+it to the front end as `description` - it just wasn't shown anywhere.
+The admin-facing part of this request was already done; what was
+missing was actually displaying it.
+
+`renderServicePicker()`'s card now shows `svc.description` in the small
+meta line next to the price whenever it's non-empty, falling back to the
+existing duration badge (`serviceDurationLabel()`) when it's blank - a
+service that's never had a description typed in keeps looking exactly
+as it did before. Admins type it into the Service edit screen's own
+main content editor (right under the title, standard WordPress UI - no
+new meta box needed).
+
+`get_services()` now runs `post_content` through `wp_strip_all_tags()`
+before sending it - the block editor's paragraph block wraps even plain
+text in a literal `<p>` (and an HTML comment delimiter) in raw
+`post_content`, which the front-end would otherwise have shown as
+visible "<p>" text, since it escapes this value for display rather than
+rendering it as markup. Verified with a browser harness: a service with
+no description still shows "1 dag" as before, one with a description
+shows that text in the exact same spot instead.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

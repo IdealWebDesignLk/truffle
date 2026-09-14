@@ -312,10 +312,21 @@ class TC_Rest_Api {
 				},
 				$service['extras']
 			);
-			$data[] = array(
+			// GitHub follow-up - now actually shown on the service card
+			// (renderServicePicker() in booking-app.js), in place of the
+			// duration badge when set - wp_strip_all_tags() first since
+			// it's meant as a short plain-text blurb, not raw HTML to
+			// render as such: the block editor's own paragraph block
+			// wraps even plain text in a literal <p> (and an HTML
+			// comment delimiter) in post_content, which the front-end
+			// would otherwise show as literal, visible "<p>" text (it
+			// escapes this value for display, it doesn't render it as
+			// markup).
+			$description = trim( wp_strip_all_tags( $post->post_content ) );
+			$data[]      = array(
 				'id'            => $post->ID,
 				'name'          => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_name', $post->post_title ),
-				'description'   => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_description', $post->post_content ),
+				'description'   => TC_WPML::translate_string( 'TC Booking Services', 'service_' . $post->ID . '_description', $description ),
 				'price'         => $service['price'],
 				// What each additional person (beyond the customer
 				// themself) costs on a "bring anyone with you" service -

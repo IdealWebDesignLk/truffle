@@ -642,9 +642,17 @@
 			: ( state.services.length
 				? '<div class="tc-svc-cards">' + state.services.map( function ( svc ) {
 					var selected = svc.id === state.serviceId;
+					// GitHub follow-up - the Service edit screen's own
+					// description field (the standard WordPress content
+					// editor, always sent as plain text - see
+					// TC_Rest_Api::get_services()) takes over this spot
+					// from the duration badge whenever it's actually been
+					// filled in, rather than showing both - the duration
+					// stays the fallback for a service that hasn't set one.
+					var metaText = svc.description ? svc.description : serviceDurationLabel( svc );
 					return '<div class="tc-svc-card' + ( selected ? ' selected' : '' ) + '" data-svc-select="' + svc.id + '">' +
 						'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
-						'<div class="svc-meta"><span class="svc-duration">' + serviceDurationLabel( svc ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
+						'<div class="svc-meta"><span class="svc-duration">' + escapeHtml( metaText ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
 						'</div>';
 				} ).join( '' ) + '</div>'
 				: '<p style="color:var(--ink-soft);font-size:14px">' + escapeHtml( I18N.noServicesAvailable ) + '</p>' );
