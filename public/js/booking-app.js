@@ -617,10 +617,6 @@
 	// a card grid, then a single-service month calendar appears below it.
 	// (GitHub issue #38 briefly split these into two separate steps;
 	// GitHub issue #42 merged them back into one view.)
-	function serviceDurationLabel( svc ) {
-		var d = Math.max( 1, svc.duration_days );
-		return d + ' ' + ( d > 1 ? I18N.daysUnit : I18N.dayUnit );
-	}
 
 	function monthBoundsFromOffset( offset ) {
 		var t     = nlToday();
@@ -642,16 +638,12 @@
 			: ( state.services.length
 				? '<div class="tc-svc-cards">' + state.services.map( function ( svc ) {
 					var selected = svc.id === state.serviceId;
-					// GitHub follow-up to the "show description instead of
-					// duration" change - hidden again per request (kept the
-					// underlying svc.description fetch/plumbing in
-					// TC_Rest_Api::get_services() untouched, since nothing
-					// downstream breaks by it going unused - only this
-					// display swap is reverted, back to always showing
-					// duration regardless of whether a description is set).
+					// GitHub follow-up - the duration badge ("1 dag"/"2
+					// dagen") that used to sit here is hidden too now, per
+					// request - the card just shows the name and price.
 					return '<div class="tc-svc-card' + ( selected ? ' selected' : '' ) + '" data-svc-select="' + svc.id + '">' +
 						'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
-						'<div class="svc-meta"><span class="svc-duration">' + escapeHtml( serviceDurationLabel( svc ) ) + '</span><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
+						'<div class="svc-meta"><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
 						'</div>';
 				} ).join( '' ) + '</div>'
 				: '<p style="color:var(--ink-soft);font-size:14px">' + escapeHtml( I18N.noServicesAvailable ) + '</p>' );

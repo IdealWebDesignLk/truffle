@@ -103,8 +103,6 @@ class TC_Booking_Shortcode {
 					/* translators: %s: service/ceremony name */
 					'availableDatesFor'       => __( 'Beschikbare data voor %s', 'tc-booking' ),
 					'selectOpenDay'           => __( 'Selecteer een beschikbare dag om verder te gaan.', 'tc-booking' ),
-					'dayUnit'                 => __( 'dag', 'tc-booking' ),
-					'daysUnit'                => __( 'dagen', 'tc-booking' ),
 
 					// Availability calendar - customers only ever see "open" or
 					// "closed" (GitHub issue #73: a day with seats left but

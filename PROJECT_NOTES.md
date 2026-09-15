@@ -1782,6 +1782,20 @@ re-enabling the display later is a one-line change back to the
 `svc.description ? svc.description : serviceDurationLabel( svc )` this
 replaced.
 
+**Follow-up - the duration badge itself is hidden now too.** Immediately
+after the above, asked to also hide "the 1 day thing" - unlike the
+description revert, this one reads as a permanent choice, not something
+being temporarily held back pending a WPML fix, so `serviceDurationLabel()`
+and the now-unused `dayUnit`/`daysUnit` i18n strings were removed
+outright rather than left dormant (the note above about a "one-line
+change back" no longer applies - that helper is gone). The card's
+`.svc-meta` row now holds only `.svc-price`; its CSS `justify-content`
+changed from `space-between` (spacing two children apart) to `flex-end`
+(right-aligning the one that's left) so the price doesn't visually drift
+to the left now that there's nothing to space it apart from. Verified
+with a browser harness - cards show just name + price, price still
+right-aligned.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
