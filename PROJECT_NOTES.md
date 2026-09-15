@@ -1796,6 +1796,22 @@ to the left now that there's nothing to space it apart from. Verified
 with a browser harness - cards show just name + price, price still
 right-aligned.
 
+**Follow-up - name and price needed to be one row on desktop too.**
+Removing the duration badge left `.svc-meta` (now just holding
+`.svc-price`) right-aligned via `flex-end` as its own block, but
+`.tc-svc-card` itself was never flex on desktop - only the `max-width:
+480px` media query made it a row (name left, price right); above that
+width, the name and its price still stacked on separate lines (name on
+top, price below), which is what "desktop: price and title in same row"
+was about. Made `.tc-svc-card`'s single-row flex layout (name left,
+truncating with an ellipsis if too long; price right) the base rule at
+every width instead of only below 480px, and trimmed the mobile media
+query down to just its font-size/spacing overrides, since the row layout
+itself no longer needs to be re-declared there. Net effect: the "1 line
+per service on mobile" behavior asked for is unchanged (that was never
+broken - the same rule now just also applies above 480px), and desktop
+gains the same single-row layout it was missing.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
