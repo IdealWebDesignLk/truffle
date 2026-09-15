@@ -198,11 +198,14 @@ class TC_Availability {
 	 * starting on $date_str. Multi-day services (duration_days > 1) block
 	 * every day in their span, not just the start date.
 	 *
-	 * $location_id only matters for special services (GitHub issue #71) -
-	 * see the special-dates check below. Regular services don't need it
-	 * here at all (a regular booking already blocks a guide everywhere,
-	 * not just at one location - see the file-level comment on
-	 * get_guides_for() about this deliberately not being location-scoped).
+	 * GitHub follow-up - $location_id now also scopes the explicit
+	 * guide-set blocks below (a guide covering two locations can be
+	 * blocked at one without it affecting the other - matches how
+	 * special-service dates already worked, #71). Booking-conflict
+	 * overlap (part 2 below) deliberately stays global regardless of
+	 * location - a real booking, or an opted-into special date, still
+	 * means the guide is committed somewhere and can't also be available
+	 * elsewhere that day (see get_guides_for()'s own file-level comment).
 	 */
 	private static function guide_available_on( $guide_id, $service, $date_str, $location_id = 0 ) {
 		global $wpdb;
@@ -213,13 +216,17 @@ class TC_Availability {
 
 		// 1. Explicit guide-set blocks. A row for any day within the span with
 		// status 'blocked' and no overriding 'available' row on that same day
-		// makes the whole span unavailable for this guide.
+		// makes the whole span unavailable for this guide, at this location -
+		// location_id 0 is a legacy row set before that column existed (see
+		// class-tc-activator.php's schema comment), still treated as
+		// applying everywhere so it keeps blocking what it always did.
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT availability_date, status FROM {$table}
-				 WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
+				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s",
 				$guide_id,
+				$location_id,
 				$start->format( 'Y-m-d' ),
 				$span_end->format( 'Y-m-d' )
 			)
@@ -599,13 +606,25 @@ class TC_Availability {
 	/* (see this file's own top-of-file warning), so these belong here.    */
 	/* ------------------------------------------------------------------ */
 
-	public static function fetch_guide_availability( $guide_id, $start, $end ) {
+	/**
+	 * GitHub follow-up - regular availability is now scoped per location,
+	 * same as special-service dates already were, so a guide covering two
+	 * locations can be blocked at one without it affecting the other.
+	 * Matches a row set for THIS location plus any legacy row with
+	 * location_id 0 (set before this column existed - see the schema
+	 * comment in class-tc-activator.php), so a guide's already-set days
+	 * off keep applying everywhere they used to rather than silently stop
+	 * applying anywhere the moment this shipped.
+	 */
+	public static function fetch_guide_availability( $guide_id, $location_id, $start, $end ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT availability_date, status, note FROM {$table} WHERE guide_id = %d AND availability_date BETWEEN %s AND %s",
+				"SELECT availability_date, status, note FROM {$table}
+				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s",
 				$guide_id,
+				$location_id,
 				$start,
 				$end
 			)
@@ -691,17 +710,23 @@ class TC_Availability {
 		return $count > 0;
 	}
 
-	public static function upsert_guide_availability( $guide_id, $date, $status, $note = null ) {
+	/**
+	 * $location_id is always a real location going forward - only rows set
+	 * before this column existed are ever 0 (see the schema comment in
+	 * class-tc-activator.php), never something a live write produces.
+	 */
+	public static function upsert_guide_availability( $guide_id, $location_id, $date, $status, $note = null ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$now   = current_time( 'mysql' );
 
 		$wpdb->query(
 			$wpdb->prepare(
-				"INSERT INTO {$table} (guide_id, availability_date, status, note, created_at, updated_at)
-				 VALUES (%d, %s, %s, %s, %s, %s)
+				"INSERT INTO {$table} (guide_id, location_id, availability_date, status, note, created_at, updated_at)
+				 VALUES (%d, %d, %s, %s, %s, %s, %s)
 				 ON DUPLICATE KEY UPDATE status = %s, note = %s, updated_at = %s",
 				$guide_id,
+				$location_id,
 				$date,
 				$status,
 				$note,

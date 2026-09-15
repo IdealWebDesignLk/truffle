@@ -805,18 +805,47 @@ class TC_Rest_Api {
 	/* Guide self-service                                                   */
 	/* ------------------------------------------------------------------ */
 
+	/**
+	 * GitHub follow-up - regular availability is now scoped per location,
+	 * same as special-service dates already were: "if he provide normal
+	 * service for 2 location we need 2 normal calendars for that two
+	 * locations." $location_id is required and validated against the
+	 * guide's own linked locations (guide_get_special_dates() below is
+	 * where the client learns what those are).
+	 */
 	public static function guide_get_availability( WP_REST_Request $request ) {
-		$guide  = self::get_guide_post_for_current_user();
+		$guide       = self::get_guide_post_for_current_user();
+		$location_id = self::validated_guide_location( $guide, $request->get_param( 'location_id' ) );
+		if ( is_wp_error( $location_id ) ) {
+			return $location_id;
+		}
 		$bounds = self::default_date_range();
 		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
 		$end    = self::sanitize_date( $request->get_param( 'end' ) ) ?: $bounds[1];
 
 		return rest_ensure_response(
 			array(
-				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $start, $end ),
+				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $location_id, $start, $end ),
 				'bookings'      => TC_Availability::fetch_guide_bookings( $guide->ID, $start, $end ),
 			)
 		);
+	}
+
+	/**
+	 * True (well, the sanitized int) if $location_id is one of $guide's own
+	 * linked locations, else a WP_Error - shared by every guide-facing
+	 * availability route below (both the guide's own and the admin's
+	 * on-their-behalf equivalent) so "is this actually one of your/their
+	 * locations" is checked identically everywhere rather than reimplemented
+	 * per route.
+	 */
+	private static function validated_guide_location( $guide, $location_id ) {
+		$location_id        = absint( $location_id );
+		$guide_location_ids = array_map( 'intval', get_post_meta( $guide->ID, '_tc_location_ids', false ) );
+		if ( ! $location_id || ! in_array( $location_id, $guide_location_ids, true ) ) {
+			return new WP_Error( 'tc_invalid_location', __( 'Ongeldige locatie.', 'tc-booking' ), array( 'status' => 400 ) );
+		}
+		return $location_id;
 	}
 
 	/**
@@ -824,33 +853,39 @@ class TC_Rest_Api {
 	 * the guide now stages every change locally and this one request
 	 * applies them all together when they click Save (see
 	 * public/js/guide-dashboard.js). $params['changes'] is an array of
-	 * {date, status}. Each entry is validated and applied independently
-	 * (one date already booked by the time Save is clicked - e.g. an admin
-	 * booked it in the meantime - doesn't block the rest from saving), and
-	 * the per-date result is returned so the client can revert only the
-	 * ones that actually failed rather than the whole batch.
+	 * {locationId, date, status} - locationId per change (not one for the
+	 * whole request) since Save commits every tab's staged changes
+	 * together, same as the special-dates bulk route already does. Each
+	 * entry is validated and applied independently (one date already
+	 * booked by the time Save is clicked - e.g. an admin booked it in the
+	 * meantime - doesn't block the rest from saving), and the per-date
+	 * result is returned so the client can revert only the ones that
+	 * actually failed rather than the whole batch.
 	 */
 	public static function guide_save_availability_bulk( WP_REST_Request $request ) {
-		$guide   = self::get_guide_post_for_current_user();
-		$params  = $request->get_json_params();
-		$changes = isset( $params['changes'] ) && is_array( $params['changes'] ) ? $params['changes'] : array();
+		$guide              = self::get_guide_post_for_current_user();
+		$guide_location_ids = array_map( 'intval', get_post_meta( $guide->ID, '_tc_location_ids', false ) );
+		$params             = $request->get_json_params();
+		$changes            = isset( $params['changes'] ) && is_array( $params['changes'] ) ? $params['changes'] : array();
 
 		$results = array();
 		foreach ( $changes as $change ) {
-			$date   = self::sanitize_date( $change['date'] ?? '' );
-			$status = isset( $change['status'] ) && in_array( $change['status'], array( 'blocked', 'available' ), true ) ? $change['status'] : '';
+			$location_id = isset( $change['locationId'] ) ? absint( $change['locationId'] ) : 0;
+			$date        = self::sanitize_date( $change['date'] ?? '' );
+			$status      = isset( $change['status'] ) && in_array( $change['status'], array( 'blocked', 'available' ), true ) ? $change['status'] : '';
+			$result      = array( 'locationId' => $location_id, 'date' => $change['date'] ?? '', 'status' => $status );
 
-			if ( ! $date || ! $status ) {
-				$results[] = array( 'date' => $change['date'] ?? '', 'success' => false, 'message' => __( 'Ongeldige datum of status.', 'tc-booking' ) );
+			if ( ! $location_id || ! in_array( $location_id, $guide_location_ids, true ) || ! $date || ! $status ) {
+				$results[] = $result + array( 'success' => false, 'message' => __( 'Ongeldige gegevens.', 'tc-booking' ) );
 				continue;
 			}
 			if ( 'blocked' === $status && TC_Availability::guide_has_booking_on( $guide->ID, $date ) ) {
-				$results[] = array( 'date' => $date, 'success' => false, 'message' => __( 'Er is al een boeking op deze datum - deze kan niet als vrije dag worden gemarkeerd.', 'tc-booking' ) );
+				$results[] = $result + array( 'success' => false, 'message' => __( 'Er is al een boeking op deze datum - deze kan niet als vrije dag worden gemarkeerd.', 'tc-booking' ) );
 				continue;
 			}
 
-			TC_Availability::upsert_guide_availability( $guide->ID, $date, $status );
-			$results[] = array( 'date' => $date, 'success' => true );
+			TC_Availability::upsert_guide_availability( $guide->ID, $location_id, $date, $status );
+			$results[] = $result + array( 'success' => true );
 		}
 
 		return rest_ensure_response( array( 'results' => $results ) );
@@ -858,13 +893,16 @@ class TC_Rest_Api {
 
 	/**
 	 * The special-service (service, location) pairs THIS guide can set
-	 * dates for, plus what they've already offered - everything
-	 * public/js/guide-dashboard.js needs to build its special-service
-	 * tabs. Unlike the wp-admin equivalent (admin/js/guide-calendars.js),
-	 * there are no live-editable "Locations covered"/"Services provided"
-	 * checkboxes here for the client to react to - a guide's own linked
-	 * services/locations are admin-configured and fixed for this request,
-	 * so the full, final pair list is just computed once, server-side.
+	 * dates for, plus what they've already offered, PLUS (GitHub
+	 * follow-up) the guide's own full location list - everything
+	 * public/js/guide-dashboard.js needs to build both its special-service
+	 * tabs and its one-per-location regular availability tabs from a
+	 * single request. Unlike the wp-admin equivalent
+	 * (admin/js/guide-calendars.js), there are no live-editable "Locations
+	 * covered"/"Services provided" checkboxes here for the client to react
+	 * to - a guide's own linked services/locations are admin-configured
+	 * and fixed for this request, so both lists are just computed once,
+	 * server-side.
 	 */
 	public static function guide_get_special_dates( WP_REST_Request $request ) {
 		$guide              = self::get_guide_post_for_current_user();
@@ -874,6 +912,13 @@ class TC_Rest_Api {
 		$location_names = array();
 		foreach ( get_posts( array( 'post_type' => TC_CPT::LOCATION, 'numberposts' => -1 ) ) as $location_post ) {
 			$location_names[ $location_post->ID ] = $location_post->post_title;
+		}
+
+		$locations = array();
+		foreach ( $guide_location_ids as $location_id ) {
+			if ( isset( $location_names[ $location_id ] ) ) {
+				$locations[] = array( 'id' => $location_id, 'name' => $location_names[ $location_id ] );
+			}
 		}
 
 		$pairs = array();
@@ -897,6 +942,7 @@ class TC_Rest_Api {
 
 		return rest_ensure_response(
 			array(
+				'locations'    => $locations,
 				'pairs'        => $pairs,
 				'specialDates' => TC_Availability::guide_special_dates( $guide->ID ),
 			)
@@ -966,6 +1012,10 @@ class TC_Rest_Api {
 		if ( is_wp_error( $guide ) ) {
 			return $guide;
 		}
+		$location_id = self::validated_guide_location( $guide, $request->get_param( 'location_id' ) );
+		if ( is_wp_error( $location_id ) ) {
+			return $location_id;
+		}
 
 		$bounds = self::default_date_range();
 		$start  = self::sanitize_date( $request->get_param( 'start' ) ) ?: $bounds[0];
@@ -973,7 +1023,7 @@ class TC_Rest_Api {
 
 		return rest_ensure_response(
 			array(
-				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $start, $end ),
+				'availability' => TC_Availability::fetch_guide_availability( $guide->ID, $location_id, $start, $end ),
 				'bookings'      => TC_Availability::fetch_guide_bookings( $guide->ID, $start, $end ),
 			)
 		);

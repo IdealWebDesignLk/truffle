@@ -1812,6 +1812,95 @@ per service on mobile" behavior asked for is unchanged (that was never
 broken - the same rule now just also applies above 480px), and desktop
 gains the same single-row layout it was missing.
 
+## Regular availability is now per-location too, like special dates already were
+
+"If he provide normal service for 2 location we need 2 normal calenders
+for that two locations. no matter how many normal services he provides
+we just need it only by location." Regular (non-special) availability
+used to be one shared calendar per guide, full stop - `wp_tc_guide_
+availability` had no location dimension at all, so a guide covering two
+locations couldn't be a day off at one without it closing the other too.
+Now mirrors how special-service dates already worked: one "Beschikbaarheid"
+tab per location the guide covers, independent of each other and of how
+many (or which) normal services are tied to that location - the tab list
+is driven purely by "Locations covered," never by services at all.
+
+**Schema.** Added a `location_id BIGINT UNSIGNED NOT NULL DEFAULT 0`
+column to `wp_tc_guide_availability`, and changed its unique key from
+`(guide_id, availability_date)` to `(guide_id, location_id,
+availability_date)`. `0` means "applies to every location" - both the
+default for a fresh install, and what every row that existed before this
+column did automatically becomes, so a guide's already-set days off keep
+blocking everywhere they used to rather than silently stop applying
+anywhere the moment this shipped. `guide_available_on()`'s explicit-block
+query and `fetch_guide_availability()` both now match `location_id = X
+OR location_id = 0`, so a location-specific row and a legacy global row
+are both honored.
+
+**dbDelta() can't drop the old index on its own.** This is the plugin's
+first real schema change since it was built, and it surfaced something
+that had never actually been exercised: `TC_Activator::create_tables()`
+only ever ran from `register_activation_hook` - fine for a fresh install,
+but this plugin self-updates from GitHub (see the `PucFactory` setup in
+`tc-booking.php`), which just replaces files and never fires that hook
+again the way a manual deactivate/reactivate would. Without a real
+migration path, an already-active site would never pick up this column
+at all. Added `TC_Activator::maybe_upgrade()`, hooked on `plugins_loaded`
+right alongside the rest of this plugin's own bootstrap, comparing the
+stored `tc_booking_db_version` option against the bundled
+`TC_BOOKING_DB_VERSION` (bumped to `2`) and re-running `create_tables()`
+(dbDelta is safe/idempotent to call again) when they differ. Separately,
+dbDelta is well known for never dropping an index that's no longer in
+the CREATE TABLE SQL - left alone, the OLD `(guide_id, availability_date)`
+unique key would still silently block ever inserting a second location's
+row for a guide+date that already had one for a different location, even
+after the new column and its own new unique key were both successfully
+added. `migrate_to_location_scoped_availability()` explicitly drops that
+old index (checked via `INFORMATION_SCHEMA`, so it's a no-op once
+already applied) right after dbDelta runs.
+
+**REST + admin save.** `guide_save_availability_bulk()` and
+`admin_get_guide_availability()`/`guide_get_availability()` all now
+require (and validate) a `location_id`, the same way the special-dates
+routes already validated `serviceId`/`locationId` - a new shared
+`validated_guide_location()` helper checks it's actually one of the
+guide's own `_tc_location_ids` for both the guide's own requests and the
+admin's on-their-behalf ones. The bulk-save change shape grew a
+`locationId` per entry (`{locationId, date, status}`), matching how the
+special-dates bulk route already carries its own per-change identifiers,
+since Save commits every tab's changes together in one request, not one
+location at a time. `guide_get_special_dates()` now also returns
+`locations` (the guide's own full location list) alongside its existing
+`pairs`/`specialDates`, since the front-end dashboard needed a way to
+learn its own location list too, not just its special-service pairs -
+reused rather than adding a second endpoint for it.
+`TC_Meta_Boxes::save_guide_availability_changes()` reads a newly nested
+`tc_availability[LOCATION_ID][DATE]` structure instead of the old flat
+`tc_availability[DATE]`, validated against the guide's own just-saved
+"Locations covered" list.
+
+**Both JS files** (`admin/js/guide-calendars.js`,
+`public/js/guide-dashboard.js`) restructured their single shared `avail`
+state into a per-location widget map (`availWidgets`/`getAvailWidget()`),
+exactly mirroring the pattern their own special-service widgets already
+used - each location gets its own month position, staged dirty dates, and
+lazily-triggered fetch the first time its tab is opened. Every location's
+hidden inputs (admin) or staged dirty entries (guide dashboard, rolled
+into one combined Save) persist regardless of which tab is currently
+active, same "switching tabs never drops a change" guarantee the
+special-date tabs already had.
+
+Verified with: a standalone PHP test confirming a block at Location A
+doesn't affect Location B, a legacy `location_id = 0` row still blocks
+every location, and `fetch_guide_availability()` correctly scopes to the
+requested location; and two browser harnesses (admin + guide dashboard)
+confirming two independent "Beschikbaarheid — X" tabs render, toggling a
+date on one leaves the other's calendar untouched, and one Save/Update
+correctly submits both locations' changes together (`tc_availability[1]
+[...]`/`tc_availability[2][...]` as separate hidden inputs; the guide
+dashboard's own bulk POST body carrying both locations' entries in one
+`changes` array).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

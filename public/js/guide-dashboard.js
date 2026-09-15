@@ -1,25 +1,30 @@
 /**
  * TC Booking - guide self-service calendar.
  *
- * Tabbed - "Beschikbaarheid" (the regular calendar) is always first,
- * followed by one tab per special service/location this guide is set up
- * for (GitHub follow-up to issue #71 - special-service dates used to be
- * wp-admin only; guides can now manage these themselves too), matching
- * admin/js/guide-calendars.js's tabbed layout on the wp-admin side. Unlike
- * that admin screen, there are no live-editable "Locations covered"/
- * "Services provided" checkboxes on this page to react to - a guide's own
- * linked services/locations are admin-configured and fixed for this
- * request, so the special-service tab list is just whatever
- * /guide/special-dates returns.
+ * Tabbed - one "Beschikbaarheid" tab per location this guide covers
+ * (GitHub follow-up - "if he provide normal service for 2 location we
+ * need 2 normal calenders for that two locations. no matter how many
+ * normal services he provides we just need it only by location"), then
+ * one tab per special service/location this guide is set up for (GitHub
+ * follow-up to issue #71 - special-service dates used to be wp-admin
+ * only; guides can now manage these themselves too), matching
+ * admin/js/guide-calendars.js's tabbed layout on the wp-admin side.
+ * Unlike that admin screen, there are no live-editable "Locations
+ * covered"/"Services provided" checkboxes on this page to react to - a
+ * guide's own linked services/locations are admin-configured and fixed
+ * for this request, so the full tab list (both halves) is just whatever
+ * /guide/special-dates returns (it now sends the guide's own location
+ * list too, not just special-service pairs).
  *
- * Both halves share the SAME staged-changes model and the SAME explicit
- * Save button: toggling a date (on either tab) only updates local state;
+ * Every tab shares the SAME staged-changes model and the SAME explicit
+ * Save button: toggling a date (on any tab) only updates local state;
  * nothing is sent to the server until Save is clicked, at which point
- * every staged change across BOTH tabs is submitted together (two REST
- * calls, one per endpoint, only for whichever actually has changes).
- * Each date is validated/applied independently server-side, so one date
- * that became invalid between page load and clicking Save (e.g. an admin
- * booked it in the meantime) doesn't block the rest - see
+ * every staged change across every tab is submitted together (two REST
+ * calls total - one per endpoint - only for whichever actually has
+ * changes, regardless of how many location/special tabs contributed to
+ * it). Each date is validated/applied independently server-side, so one
+ * date that became invalid between page load and clicking Save (e.g. an
+ * admin booked it in the meantime) doesn't block the rest - see
  * guide_save_availability_bulk()/guide_save_special_dates_bulk() in
  * class-tc-rest-api.php.
  *
@@ -44,7 +49,7 @@
 	var API_ROOT = window.tcGuideDashboard.restRoot;
 	var NONCE    = window.tcGuideDashboard.nonce;
 
-	var activeTab = 'availability'; // 'availability' | a special (service,location) pair key
+	var activeTab = null; // set once the first render() computes the real default tab key
 	var saving  = false; // true while a save request is in flight - locks every tab
 	var error   = null;
 	var status  = null; // 'saved' | null - small status message near the title
@@ -135,37 +140,51 @@
 		return { first: first, last: last };
 	}
 
+	function avKey( locationId ) {
+		return 'avail:' + locationId;
+	}
+
 	/* ---------------------------------------------------------------- */
-	/* Availability tab                                                  */
+	/* Availability tabs - one per location                              */
 	/* ---------------------------------------------------------------- */
 
-	var avail = {
-		monthOffset: 0,
-		availability: {}, // date -> 'blocked' | 'available', last known SAVED value from the server
-		dirty: {}, // date -> 'blocked' | 'available', staged but not yet saved
-		bookings: {}, // date -> summary string, for dates with a real booking
-		loading: true,
-	};
+	// One entry per location ever shown, so toggled state and month
+	// position survive switching tabs back and forth - same idea as
+	// special.widgets below.
+	var availWidgets = {};
+	function getAvailWidget( locationId ) {
+		if ( ! availWidgets[ locationId ] ) {
+			availWidgets[ locationId ] = {
+				locationId: locationId,
+				monthOffset: 0,
+				availability: {}, // date -> 'blocked' | 'available', last known SAVED value from the server
+				dirty: {}, // date -> 'blocked' | 'available', staged but not yet saved
+				bookings: {}, // date -> summary string, for dates with a real booking
+				loading: true,
+			};
+			loadAvailMonth( availWidgets[ locationId ] );
+		}
+		return availWidgets[ locationId ];
+	}
 
-	function loadAvailMonth() {
-		avail.loading = true;
+	function loadAvailMonth( w ) {
+		w.loading = true;
 		render();
-		var bounds = monthBounds( avail.monthOffset );
-		apiGet( '/guide/availability?start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
+		var bounds = monthBounds( w.monthOffset );
+		apiGet( '/guide/availability?location_id=' + w.locationId + '&start=' + isoDate( bounds.first ) + '&end=' + isoDate( bounds.last ) )
 			.then( function ( data ) {
 				// Only the fetched range is replaced, not the whole object -
-				// avail.availability can hold entries from other months
-				// already visited this session, and there's no reason to
-				// throw those away just because a different month's data
-				// came back.
-				( data.availability || [] ).forEach( function ( r ) { avail.availability[ r.date ] = r.status; } );
-				( data.bookings || [] ).forEach( function ( r ) { avail.bookings[ r.date ] = r.summary; } );
-				avail.loading = false;
+				// w.availability can hold entries from other months already
+				// visited this session, and there's no reason to throw those
+				// away just because a different month's data came back.
+				( data.availability || [] ).forEach( function ( r ) { w.availability[ r.date ] = r.status; } );
+				( data.bookings || [] ).forEach( function ( r ) { w.bookings[ r.date ] = r.summary; } );
+				w.loading = false;
 				render();
 			} )
 			.catch( function ( err ) {
-				error = err.message;
-				avail.loading = false;
+				error   = err.message;
+				w.loading = false;
 				render();
 			} );
 	}
@@ -173,22 +192,26 @@
 	// Stages a local change only. Toggling a date already staged just
 	// changes what it's staged as; toggling it back to its last-saved
 	// value un-stages it entirely (nothing to save for that date after all).
-	function toggleAvailDate( iso, currentlyBlocked ) {
+	function toggleAvailDate( w, iso, currentlyBlocked ) {
 		if ( saving ) {
 			return;
 		}
 		var newStatus = currentlyBlocked ? 'available' : 'blocked';
-		var saved     = avail.availability[ iso ] || 'available';
+		var saved     = w.availability[ iso ] || 'available';
 		if ( newStatus === saved ) {
-			delete avail.dirty[ iso ];
+			delete w.dirty[ iso ];
 		} else {
-			avail.dirty[ iso ] = newStatus;
+			w.dirty[ iso ] = newStatus;
 		}
 		render();
 	}
 
-	function renderAvailPanel() {
-		var bounds    = monthBounds( avail.monthOffset );
+	function availWidgetDirtyCount( w ) {
+		return Object.keys( w.dirty ).length;
+	}
+
+	function renderAvailPanel( w, location ) {
+		var bounds    = monthBounds( w.monthOffset );
 		var monthName = bounds.first.toLocaleDateString( 'en-US', { month: 'long', year: 'numeric' } );
 		var firstDow  = ( bounds.first.getDay() + 6 ) % 7; // Monday-first
 		var daysInMo  = bounds.last.getDate();
@@ -201,9 +224,9 @@
 		for ( var d = 1; d <= daysInMo; d++ ) {
 			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
 			var iso     = isoDate( dateObj );
-			var isDirty = Object.prototype.hasOwnProperty.call( avail.dirty, iso );
-			var st      = isDirty ? avail.dirty[ iso ] : ( avail.availability[ iso ] || 'available' );
-			var booking = avail.bookings[ iso ];
+			var isDirty = Object.prototype.hasOwnProperty.call( w.dirty, iso );
+			var st      = isDirty ? w.dirty[ iso ] : ( w.availability[ iso ] || 'available' );
+			var booking = w.bookings[ iso ];
 			var isPast  = dateObj < today;
 			// A booked date always shows as "booked" and is never
 			// clickable, regardless of what the availability table says.
@@ -220,9 +243,9 @@
 			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
-		return '<p class="tc-sub">This is your own calendar - tap a date to mark it as a day off, or tap again to reopen it, then click Save. Everything is available by default. Booked dates (hover for details) can’t be changed here - contact admin if one needs to move.</p>' +
+		return '<p class="tc-sub">This is your calendar for <strong>' + escapeHtml( location.name ) + '</strong> - tap a date to mark it as a day off there, or tap again to reopen it, then click Save. Everything is available by default. Booked dates (hover for details) can’t be changed here - contact admin if one needs to move.</p>' +
 			'<div class="tc-grid-nav"><button id="tc-prev-month">←</button><span class="range">' + monthName + '</span><button id="tc-next-month">→</button></div>' +
-			( avail.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
+			( w.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +
 				cells + '</div>' ) +
 			'<div class="tc-legend" style="margin-top:16px;">' +
@@ -232,14 +255,14 @@
 			'</div>';
 	}
 
-	function wireAvailEvents() {
+	function wireAvailEvents( w ) {
 		var prev = document.getElementById( 'tc-prev-month' );
-		if ( prev ) prev.onclick = function () { avail.monthOffset -= 1; loadAvailMonth(); };
+		if ( prev ) prev.onclick = function () { w.monthOffset -= 1; loadAvailMonth( w ); };
 		var next = document.getElementById( 'tc-next-month' );
-		if ( next ) next.onclick = function () { avail.monthOffset += 1; loadAvailMonth(); };
+		if ( next ) next.onclick = function () { w.monthOffset += 1; loadAvailMonth( w ); };
 		root.querySelectorAll( '.tc-cal-tab-panel [data-date]' ).forEach( function ( el ) {
 			el.onclick = function () {
-				toggleAvailDate( el.dataset.date, '1' === el.dataset.blocked );
+				toggleAvailDate( w, el.dataset.date, '1' === el.dataset.blocked );
 			};
 		} );
 	}
@@ -250,6 +273,7 @@
 
 	var special = {
 		loading: true,
+		locations: [], // [{id, name}] - this guide's own linked locations, also used for the availability tabs above
 		pairs: [], // [{serviceId, serviceName, locationId, locationName}]
 		widgets: {}, // pairKey -> { monthOffset, savedDates: {date:true}, dates: {date:true} (staged desired state) }
 	};
@@ -263,7 +287,8 @@
 		render();
 		apiGet( '/guide/special-dates' )
 			.then( function ( data ) {
-				special.pairs = data.pairs || [];
+				special.locations = data.locations || [];
+				special.pairs     = data.pairs || [];
 				var byPair = {};
 				( data.specialDates || [] ).forEach( function ( row ) {
 					var k = pairKey( row.service_id, row.location_id );
@@ -369,18 +394,21 @@
 	}
 
 	/* ---------------------------------------------------------------- */
-	/* Save (both tabs together)                                         */
+	/* Save (every tab together)                                         */
 	/* ---------------------------------------------------------------- */
 
 	function totalDirtyCount() {
-		var count = Object.keys( avail.dirty ).length;
+		var count = 0;
+		Object.keys( availWidgets ).forEach( function ( k ) {
+			count += availWidgetDirtyCount( availWidgets[ k ] );
+		} );
 		Object.keys( special.widgets ).forEach( function ( k ) {
 			count += specialWidgetDirtyCount( special.widgets[ k ] );
 		} );
 		return count;
 	}
 
-	// Submits every staged change across both tabs together. Each date is
+	// Submits every staged change across every tab together. Each date is
 	// validated/applied independently server-side, so one date that became
 	// invalid between page load and clicking Save (e.g. an admin booked it
 	// in the meantime) doesn't block the rest - only that date's change
@@ -399,18 +427,25 @@
 		var requests  = [];
 		var failures  = [];
 
-		var availDates = Object.keys( avail.dirty );
-		if ( availDates.length ) {
-			var availChanges = availDates.map( function ( date ) { return { date: date, status: avail.dirty[ date ] }; } );
+		var availChanges = [];
+		Object.keys( availWidgets ).forEach( function ( locationId ) {
+			var w = availWidgets[ locationId ];
+			Object.keys( w.dirty ).forEach( function ( date ) {
+				availChanges.push( { locationId: w.locationId, date: date, status: w.dirty[ date ] } );
+			} );
+		} );
+		if ( availChanges.length ) {
 			requests.push(
 				apiPost( '/guide/availability/bulk', { changes: availChanges } ).then( function ( data ) {
 					( data.results || [] ).forEach( function ( r ) {
+						var w = availWidgets[ r.locationId ];
+						if ( ! w ) return;
 						if ( r.success ) {
-							avail.availability[ r.date ] = avail.dirty[ r.date ];
+							w.availability[ r.date ] = w.dirty[ r.date ];
 						} else {
 							failures.push( r.message || r.date );
 						}
-						delete avail.dirty[ r.date ];
+						delete w.dirty[ r.date ];
 					} );
 				} )
 			);
@@ -501,11 +536,13 @@
 	function render() {
 		ensureWidgetIds();
 
-		var tabs = [ { key: 'availability', label: 'Beschikbaarheid' } ].concat(
+		var tabs = special.locations.map( function ( l ) {
+			return { key: avKey( l.id ), label: 'Beschikbaarheid — ' + l.name, location: l };
+		} ).concat(
 			special.pairs.map( function ( p ) { return { key: pairKey( p.serviceId, p.locationId ), label: p.serviceName + ' — ' + p.locationName, pair: p }; } )
 		);
-		if ( ! tabs.some( function ( t ) { return t.key === activeTab; } ) ) {
-			activeTab = 'availability';
+		if ( ! activeTab || ! tabs.some( function ( t ) { return t.key === activeTab; } ) ) {
+			activeTab = tabs.length ? tabs[ 0 ].key : null;
 		}
 
 		var tabbar = tabs.length > 1
@@ -518,8 +555,10 @@
 		var panel;
 		if ( activeTabDef && activeTabDef.pair ) {
 			panel = special.loading ? '<p>Loading…</p>' : renderSpecialPanel( special.widgets[ activeTabDef.key ], activeTabDef.pair );
+		} else if ( activeTabDef && activeTabDef.location ) {
+			panel = renderAvailPanel( getAvailWidget( activeTabDef.location.id ), activeTabDef.location );
 		} else {
-			panel = renderAvailPanel();
+			panel = special.loading ? '<p>Loading…</p>' : '<p>No locations are set up for your account yet - contact admin.</p>';
 		}
 
 		var dirty = totalDirtyCount();
@@ -551,8 +590,8 @@
 			if ( special.widgets[ activeTabDef.key ] ) {
 				wireSpecialEvents( special.widgets[ activeTabDef.key ] );
 			}
-		} else {
-			wireAvailEvents();
+		} else if ( activeTabDef && activeTabDef.location ) {
+			wireAvailEvents( getAvailWidget( activeTabDef.location.id ) );
 		}
 	}
 
@@ -566,6 +605,5 @@
 		}
 	} );
 
-	loadAvailMonth();
 	loadSpecialPairs();
 })();

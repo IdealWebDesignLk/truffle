@@ -644,7 +644,7 @@ class TC_Meta_Boxes {
 		}
 
 		self::save_guide_special_dates_changes( $post_id, $service_ids, $location_ids );
-		self::save_guide_availability_changes( $post_id );
+		self::save_guide_availability_changes( $post_id, $location_ids );
 	}
 
 	/**
@@ -725,42 +725,55 @@ class TC_Meta_Boxes {
 	}
 
 	/**
-	 * GitHub feedback - the calendar in render_guide_availability() below
+	 * GitHub feedback - the calendar tabs in render_guide_calendars()
 	 * used to auto-save one date per tap via a separate AJAX request; it
-	 * now stages changes as hidden tc_availability[DATE]=STATUS fields
-	 * (admin/js/guide-availability.js) that submit with the rest of this
-	 * form, applied here alongside the other fields above - "click Update
-	 * to save" is already the mental model for everything else on this
-	 * screen, so the calendar having its own separate save mechanism was a
-	 * mismatch. Re-validated here exactly like the REST bulk-save endpoint
-	 * for the guide's own dashboard does (TC_Rest_Api::
+	 * now stages changes as hidden tc_availability[LOCATION_ID][DATE]=STATUS
+	 * fields (admin/js/guide-calendars.js) that submit with the rest of
+	 * this form, applied here alongside the other fields above - "click
+	 * Update to save" is already the mental model for everything else on
+	 * this screen, so the calendar having its own separate save mechanism
+	 * was a mismatch. Re-validated here exactly like the REST bulk-save
+	 * endpoint for the guide's own dashboard does (TC_Rest_Api::
 	 * guide_save_availability_bulk()) - never trust the client's staged
 	 * status alone, a date can become booked between page load and
 	 * clicking Update.
+	 *
+	 * GitHub follow-up - now one calendar per location ("if he provide
+	 * normal service for 2 location we need 2 normal calenders for that
+	 * two locations"), so a change also carries which location it's for;
+	 * $location_ids is this guide's own just-saved "Locations covered"
+	 * list (not whatever the client posted before that - a location could
+	 * have been unchecked in this very save).
 	 */
-	private static function save_guide_availability_changes( $post_id ) {
-		$changes = isset( $_POST['tc_availability'] ) && is_array( $_POST['tc_availability'] ) ? wp_unslash( $_POST['tc_availability'] ) : array();
-		if ( ! $changes ) {
+	private static function save_guide_availability_changes( $post_id, $location_ids ) {
+		$posted = isset( $_POST['tc_availability'] ) && is_array( $_POST['tc_availability'] ) ? wp_unslash( $_POST['tc_availability'] ) : array();
+		if ( ! $posted ) {
 			return;
 		}
 
 		$errors = array();
-		foreach ( $changes as $date => $status ) {
-			$date   = sanitize_text_field( $date );
-			$status = in_array( $status, array( 'blocked', 'available' ), true ) ? $status : '';
-			if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || ! $status ) {
+		foreach ( $posted as $location_id => $changes ) {
+			$location_id = absint( $location_id );
+			if ( ! in_array( $location_id, $location_ids, true ) || ! is_array( $changes ) ) {
 				continue;
 			}
-			if ( 'blocked' === $status && TC_Availability::guide_has_booking_on( $post_id, $date ) ) {
-				/* translators: %s: date (YYYY-MM-DD) */
-				$errors[] = sprintf( __( '%s already has a booking and could not be marked as a day off.', 'tc-booking' ), $date );
-				continue;
+			foreach ( $changes as $date => $status ) {
+				$date   = sanitize_text_field( $date );
+				$status = in_array( $status, array( 'blocked', 'available' ), true ) ? $status : '';
+				if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || ! $status ) {
+					continue;
+				}
+				if ( 'blocked' === $status && TC_Availability::guide_has_booking_on( $post_id, $date ) ) {
+					/* translators: %s: date (YYYY-MM-DD) */
+					$errors[] = sprintf( __( '%s already has a booking and could not be marked as a day off.', 'tc-booking' ), $date );
+					continue;
+				}
+				TC_Availability::upsert_guide_availability( $post_id, $location_id, $date, $status );
 			}
-			TC_Availability::upsert_guide_availability( $post_id, $date, $status );
 		}
 
 		if ( $errors ) {
-			// Shown inline the next time render_guide_availability() runs -
+			// Shown inline the next time render_guide_calendars() runs -
 			// same transient + inline-notice pattern as
 			// render_new_booking_form()'s error handling above, for the
 			// same reason: a save_post hook isn't a good place to redirect

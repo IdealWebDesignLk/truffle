@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a fully custom stack - data model, availability engine, admin panel, front-end, and WooCommerce checkout - for locations, services, and guides.
- * Version:           0.37.5
+ * Version:           0.38.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,11 +18,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.37.5' );
+define( 'TC_BOOKING_VERSION', '0.38.0' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );
-define( 'TC_BOOKING_DB_VERSION', '1'); // Bump when schema in class-tc-activator.php changes.
+define( 'TC_BOOKING_DB_VERSION', '2'); // Bump when schema in class-tc-activator.php changes.
 
 /**
  * Autoload plugin classes on demand.
@@ -85,6 +85,13 @@ function tc_booking_init() {
 		add_action( 'admin_notices', 'tc_booking_missing_woocommerce_notice' );
 		return;
 	}
+
+	// GitHub follow-up - the only way an already-active site (this plugin
+	// self-updates from GitHub - see PucFactory below - which never fires
+	// register_activation_hook again the way a manual deactivate/
+	// reactivate would) picks up a DB schema change bundled in an update.
+	// See TC_Activator::maybe_upgrade()'s own docblock.
+	TC_Activator::maybe_upgrade();
 
 	TC_CPT::init();
 	TC_Meta_Boxes::init();
