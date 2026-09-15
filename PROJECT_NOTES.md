@@ -1765,6 +1765,23 @@ rendering it as markup. Verified with a browser harness: a service with
 no description still shows "1 dag" as before, one with a description
 shows that text in the exact same spot instead.
 
+**Follow-up - hidden again.** Shortly after this shipped, a real edit to
+one service's description surfaced a separate, pre-existing WPML String
+Translation staleness issue (a stored Dutch "translation" of the
+description string wasn't refreshing to match new post_content - a
+WPML string-caching quirk, not a bug in this plugin's own code, and the
+same mechanism service names/extras labels already relied on before this
+feature existed). Rather than leave that visible on the live site while
+it's sorted out in WPML's own String Translation screen, the display
+swap was reverted - `renderServicePicker()`'s card always shows the
+duration badge again now, regardless of whether a description is set.
+Deliberately left `TC_Rest_Api::get_services()`'s `description` field
+and its `wp_strip_all_tags()` handling in place rather than removing
+them - nothing downstream breaks by that value going unused, and
+re-enabling the display later is a one-line change back to the
+`svc.description ? svc.description : serviceDurationLabel( svc )` this
+replaced.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
