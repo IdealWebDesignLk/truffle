@@ -29,7 +29,8 @@
  * class-tc-rest-api.php.
  *
  * Availability tab specifics: green = available (the default - no action
- * needed). Clicking a date toggles it to blocked (a day off) and back.
+ * needed, up to and including the booking horizon cutoff below).
+ * Clicking a date toggles it to blocked (a day off) and back.
  * Dates with an existing booking are shown (amber, with the
  * ceremony/customer as a tooltip) but not clickable - to change those,
  * the guide needs to contact admin, since cancelling/moving a paid
@@ -48,6 +49,16 @@
 
 	var API_ROOT = window.tcGuideDashboard.restRoot;
 	var NONCE    = window.tcGuideDashboard.nonce;
+
+	// GitHub follow-up - "close all dates after 2027 jan 01, if guide
+	// wants they can enable it." Mirrors admin/js/guide-calendars.js's
+	// own CUTOFF/defaultAvailStatus() - see that file's comment, and the
+	// matching server-side rule in TC_Availability::guide_available_on().
+	var CUTOFF       = window.tcGuideDashboard.bookingHorizonCutoff || '';
+	var CUTOFF_LABEL = CUTOFF ? new Date( CUTOFF + 'T00:00:00' ).toLocaleDateString( 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' } ) : '';
+	function defaultAvailStatus( iso ) {
+		return ( CUTOFF && iso > CUTOFF ) ? 'blocked' : 'available';
+	}
 
 	var activeTab = null; // set once the first render() computes the real default tab key
 	var saving  = false; // true while a save request is in flight - locks every tab
@@ -197,7 +208,7 @@
 			return;
 		}
 		var newStatus = currentlyBlocked ? 'available' : 'blocked';
-		var saved     = w.availability[ iso ] || 'available';
+		var saved     = w.availability[ iso ] || defaultAvailStatus( iso );
 		if ( newStatus === saved ) {
 			delete w.dirty[ iso ];
 		} else {
@@ -225,7 +236,7 @@
 			var dateObj = new Date( bounds.first.getFullYear(), bounds.first.getMonth(), d );
 			var iso     = isoDate( dateObj );
 			var isDirty = Object.prototype.hasOwnProperty.call( w.dirty, iso );
-			var st      = isDirty ? w.dirty[ iso ] : ( w.availability[ iso ] || 'available' );
+			var st      = isDirty ? w.dirty[ iso ] : ( w.availability[ iso ] || defaultAvailStatus( iso ) );
 			var booking = w.bookings[ iso ];
 			var isPast  = dateObj < today;
 			// A booked date always shows as "booked" and is never
@@ -239,11 +250,15 @@
 				attrs += ' title="' + escapeAttr( booking ) + '"';
 			} else if ( isDirty ) {
 				attrs += ' title="' + escapeAttr( 'Not saved yet' ) + '"';
+			} else if ( ! w.availability[ iso ] && CUTOFF && iso > CUTOFF ) {
+				attrs += ' title="' + escapeAttr( 'Not open for booking yet - click to enable this date' ) + '"';
 			}
 			cells += '<div class="tc-cal-day ' + cls + '"' + attrs + '>' + d + '</div>';
 		}
 
-		return '<p class="tc-sub">This is your calendar for <strong>' + escapeHtml( location.name ) + '</strong> - tap a date to mark it as a day off there, or tap again to reopen it, then click Save. Everything is available by default. Booked dates (hover for details) can’t be changed here - contact admin if one needs to move.</p>' +
+		return '<p class="tc-sub">This is your calendar for <strong>' + escapeHtml( location.name ) + '</strong> - tap a date to mark it as a day off there, or tap again to reopen it, then click Save. Everything is available by default' +
+				( CUTOFF ? ' up to and including ' + escapeHtml( CUTOFF_LABEL ) + ' - dates after that are closed until you open them individually here' : '' ) +
+				'. Booked dates (hover for details) can’t be changed here - contact admin if one needs to move.</p>' +
 			'<div class="tc-grid-nav"><button id="tc-prev-month">←</button><span class="range">' + monthName + '</span><button id="tc-next-month">→</button></div>' +
 			( w.loading ? '<p>Loading…</p>' : '<div class="tc-cal-grid">' +
 				[ 'M', 'T', 'W', 'T', 'F', 'S', 'S' ].map( function ( l ) { return '<div class="tc-cal-dow">' + l + '</div>'; } ).join( '' ) +

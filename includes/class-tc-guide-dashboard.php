@@ -83,8 +83,9 @@ class TC_Guide_Dashboard {
 			'tc-guide-dashboard',
 			'tcGuideDashboard',
 			array(
-				'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
-				'nonce'    => wp_create_nonce( 'wp_rest' ),
+				'restRoot'             => esc_url_raw( rest_url( 'tc/v1' ) ),
+				'nonce'                => wp_create_nonce( 'wp_rest' ),
+				'bookingHorizonCutoff' => defined( 'TC_BOOKING_HORIZON_CUTOFF' ) ? TC_BOOKING_HORIZON_CUTOFF : '',
 			)
 		);
 

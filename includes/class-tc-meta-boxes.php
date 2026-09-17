@@ -66,9 +66,10 @@ class TC_Meta_Boxes {
 				'tc-guide-calendars',
 				'tcGuideAvailabilityAdmin',
 				array(
-					'restRoot' => esc_url_raw( rest_url( 'tc/v1' ) ),
-					'nonce'    => wp_create_nonce( 'wp_rest' ),
-					'guideId'  => $post->ID,
+					'restRoot'             => esc_url_raw( rest_url( 'tc/v1' ) ),
+					'nonce'                => wp_create_nonce( 'wp_rest' ),
+					'guideId'              => $post->ID,
+					'bookingHorizonCutoff' => defined( 'TC_BOOKING_HORIZON_CUTOFF' ) ? TC_BOOKING_HORIZON_CUTOFF : '',
 				)
 			);
 

@@ -1901,6 +1901,76 @@ correctly submits both locations' changes together (`tc_availability[1]
 dashboard's own bulk POST body carrying both locations' entries in one
 `changes` array).
 
+## Booking horizon: regular availability closes by default past 1 January 2027
+
+"Can we closed all dates after 2027 jan 01, if guide wants they can enable
+it... dates for this year is already configed so i dont want to mess them
+again." Every regular (non-special) date used to default to *open* the
+instant no row existed in `wp_tc_guide_availability` for it - a guide only
+ever wrote a row to say "I'm off this day." This flips that default to
+*closed* once a date is past a fixed cutoff (`TC_BOOKING_HORIZON_CUTOFF`
+in `tc-booking.php`, currently `2027-01-01`), while leaving every date up
+to and including the cutoff - which covers everything already configured
+for this year - completely untouched.
+
+**Deliberately not a data migration.** The obvious alternative - write a
+'blocked' row for every guide/location/date past the cutoff at upgrade
+time - was rejected specifically because of "i dont want to mess them
+again": any bulk write risks touching dates a guide already configured, or
+needs careful exclusion logic that's just more surface area for a mistake
+on a live site. Instead this is a pure runtime rule in
+`TC_Availability::guide_available_on()`: for a regular service, every day
+in the booking span that falls after the cutoff must have its own row with
+status `'available'` (exactly what the calendar already writes when a
+guide taps a date to open it) or the guide is treated as unavailable that
+day. No new table column, no backfill, nothing to run once and get wrong -
+existing rows and the existing "no row = open" meaning for every date up
+to the cutoff are never read differently than before.
+
+**Reused the existing toggle, not a second mechanism.** A guide "enabling"
+a date past the cutoff is not a new feature to build - it's the exact same
+tap-to-toggle-then-Save/Update flow that already existed for marking a day
+off, just landing on a date whose default happened to flip. Both
+`admin/js/guide-calendars.js` and `public/js/guide-dashboard.js` got a
+small `defaultAvailStatus(iso)` helper (`'blocked'` past the cutoff,
+`'available'` otherwise) that replaces the hardcoded `'available'` fallback
+used everywhere a date has no saved row yet - in the cell's displayed
+color/state, in what counts as "the loaded value" for staging/unstaging a
+change, and in the `data-blocked` flag the click handler reads. A cell
+past the cutoff with no saved row now shows as a "day off" and a tooltip
+("Not open for booking yet - click to enable this date") explains why;
+tapping it writes an explicit `'available'` row exactly like tapping any
+other closed date always has, and Save/Update persists it the normal way.
+
+**Only regular services.** Special services already default-closed via
+their own opt-in mechanism (`_tc_special_dates` post meta, checked
+separately in `guide_available_on()`) - the new cutoff rule sits in the
+`else` branch alongside the existing regular-service special-date-conflict
+check, so it never touches special-service logic at all.
+
+**Config, not a settings screen.** The cutoff is a single PHP constant
+rather than a new wp-admin settings page - this plugin has no general
+Settings screen today, and one fixed, developer-editable date was judged
+simpler than building UI for a value that's expected to change rarely, if
+ever. `get_grid()`/`is_bookable()`/`pick_guide()` needed no changes at all
+since they already funnel every regular-service check through
+`guide_available_on()` - the single choke-point this file's own header
+comment describes - so the customer-facing calendar and the actual
+booking re-check both pick up the new rule automatically. The booking
+widget's own `maxMonth = 6` rolling-window cap in `booking-app.js` is
+unrelated and untouched; a customer who navigates a "beyond horizon" month
+just sees every day rendered closed unless a guide has opened specific
+dates in it.
+
+Verified with a standalone PHP test (via Reflection, against a stubbed
+`$wpdb`) covering: the cutoff date itself still defaults open; the day
+right after it defaults closed with no row; an explicit `'available'` row
+on that day reopens it; a 2026 date with no row is unaffected; a 2026 date
+with an existing explicit `'blocked'` row still blocks exactly as before;
+a multi-day service whose span crosses the cutoff blocks unless every day
+past the cutoff has its own override; and a special service past the
+cutoff is still governed by its own pre-existing opt-in rule, not this one.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

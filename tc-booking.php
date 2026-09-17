@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a fully custom stack - data model, availability engine, admin panel, front-end, and WooCommerce checkout - for locations, services, and guides.
- * Version:           0.38.0
+ * Version:           0.39.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,11 +18,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.38.0' );
+define( 'TC_BOOKING_VERSION', '0.39.0' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );
 define( 'TC_BOOKING_DB_VERSION', '2'); // Bump when schema in class-tc-activator.php changes.
+
+/**
+ * GitHub follow-up - "can we closed all dates after 2027 jan 01, if guide
+ * wants they can enable it." Regular (non-special) guide availability is
+ * open by default up to and including this date, then closed by default
+ * past it - a guide opens a specific later date the same way they already
+ * mark any date, by tapping it on their own calendar (admin or front-end
+ * guide dashboard), which already writes the explicit 'available' row this
+ * now requires. See TC_Availability::guide_available_on(). Every date up
+ * to and including this cutoff, including everything already configured
+ * for this year, is completely unaffected. Empty string disables the
+ * cutoff entirely (every date defaults open again, the pre-existing
+ * behavior).
+ */
+define( 'TC_BOOKING_HORIZON_CUTOFF', '2027-01-01' );
 
 /**
  * Autoload plugin classes on demand.

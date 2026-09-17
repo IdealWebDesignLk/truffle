@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.38.0
+Stable tag: 0.39.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,14 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.39.0 =
+* Regular availability now defaults to CLOSED from 1 January 2027
+  onward, instead of open - a guide opens a specific date past that
+  point the same way they already mark any date on their own calendar
+  (admin or front-end dashboard): tap it, then Save/Update. Every date
+  up to and including 1 January 2027, including everything already
+  configured for this year, is completely unaffected.
 
 = 0.38.0 =
 * Regular (non-special) availability is now scoped per location too,

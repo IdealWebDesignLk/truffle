@@ -231,7 +231,9 @@ class TC_Availability {
 				$span_end->format( 'Y-m-d' )
 			)
 		);
+		$status_by_date = array();
 		foreach ( $rows as $row ) {
+			$status_by_date[ $row->availability_date ] = $row->status;
 			if ( 'blocked' === $row->status ) {
 				return false;
 			}
@@ -255,8 +257,35 @@ class TC_Availability {
 			if ( ! self::guide_offers_special_on( $guide_id, $service['id'], $location_id, $date_str ) ) {
 				return false;
 			}
-		} elseif ( self::guide_has_special_date_on( $guide_id, $date_str ) ) {
-			return false;
+		} else {
+			if ( self::guide_has_special_date_on( $guide_id, $date_str ) ) {
+				return false;
+			}
+
+			// GitHub follow-up - "close all dates after 2027 jan 01, if
+			// guide wants they can enable it." Regular availability
+			// flips from default-OPEN to default-CLOSED once a day is
+			// past TC_BOOKING_HORIZON_CUTOFF: every day in the span past
+			// the cutoff needs its own explicit 'available' row (the
+			// exact same row a guide already creates by tapping a date
+			// on their calendar) or the guide is treated as unavailable
+			// that day. Every date up to and including the cutoff -
+			// including everything already configured for this year -
+			// keeps its original "no row = open" meaning untouched, and
+			// special services (branch above) are unaffected since they
+			// already default-closed via their own opt-in mechanism.
+			if ( defined( 'TC_BOOKING_HORIZON_CUTOFF' ) && TC_BOOKING_HORIZON_CUTOFF ) {
+				$cursor = clone $start;
+				while ( $cursor <= $span_end ) {
+					$day = $cursor->format( 'Y-m-d' );
+					if ( $day > TC_BOOKING_HORIZON_CUTOFF
+						&& 'available' !== ( isset( $status_by_date[ $day ] ) ? $status_by_date[ $day ] : null )
+					) {
+						return false;
+					}
+					$cursor->modify( '+1 day' );
+				}
+			}
 		}
 
 		// 2. Existing bookings for this guide that overlap the span, across
