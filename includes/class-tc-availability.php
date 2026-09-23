@@ -220,11 +220,23 @@ class TC_Availability {
 		// location_id 0 is a legacy row set before that column existed (see
 		// class-tc-activator.php's schema comment), still treated as
 		// applying everywhere so it keeps blocking what it always did.
+		//
+		// A guide can end up with BOTH a legacy location_id = 0 row and a
+		// newer location-specific row for the same date (see the GitHub
+		// bug report and fix in fetch_guide_availability() above) - this
+		// method's own decision is unaffected by which one $wpdb happens
+		// to return first, since 'blocked' short-circuits below regardless
+		// of order and every non-blocked row is 'available' by definition,
+		// but ORDER BY here too so $status_by_date (used further down for
+		// the booking-horizon check) is built the same deterministic way
+		// as the display-facing query, rather than leaving a future
+		// reader to re-derive that this particular order doesn't matter.
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT availability_date, status FROM {$table}
-				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s",
+				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s
+				 ORDER BY location_id ASC",
 				$guide_id,
 				$location_id,
 				$start->format( 'Y-m-d' ),
@@ -644,6 +656,24 @@ class TC_Availability {
 	 * comment in class-tc-activator.php), so a guide's already-set days
 	 * off keep applying everywhere they used to rather than silently stop
 	 * applying anywhere the moment this shipped.
+	 *
+	 * GitHub bug report ("in backend it shows as enabled but in calender
+	 * it shows and not enable") - a guide who had a date set BEFORE the
+	 * per-location migration (a legacy location_id = 0 row) and then set
+	 * that SAME date again afterward, through the new per-location
+	 * calendar (a location_id = <real id> row), ends up with TWO rows
+	 * for one guide + date, both matched by the OR above. Confirmed
+	 * directly via a raw REST response for guide 79426 / 2026-11-07
+	 * containing both a 'blocked' and an 'available' row. Without an
+	 * ORDER BY, $wpdb->get_results() has no guaranteed row order, so
+	 * which one the browser's own "last one wins" merge ended up with
+	 * was pure luck - matching sometimes, not others, between the admin
+	 * screen and the customer calendar depending on nothing more than
+	 * query timing. `ORDER BY location_id ASC` guarantees the legacy 0
+	 * row is always processed first and the location-specific row (the
+	 * more recent, deliberate setting) always overwrites it below - one
+	 * row per date, out of this method, every time, regardless of how
+	 * many duplicate rows the table happens to still have.
 	 */
 	public static function fetch_guide_availability( $guide_id, $location_id, $start, $end ) {
 		global $wpdb;
@@ -651,7 +681,8 @@ class TC_Availability {
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT availability_date, status, note FROM {$table}
-				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s",
+				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s
+				 ORDER BY location_id ASC",
 				$guide_id,
 				$location_id,
 				$start,
@@ -659,11 +690,11 @@ class TC_Availability {
 			)
 		);
 
-		$data = array();
+		$by_date = array();
 		foreach ( $rows as $row ) {
-			$data[] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
+			$by_date[ $row->availability_date ] = array( 'date' => $row->availability_date, 'status' => $row->status, 'note' => $row->note );
 		}
-		return $data;
+		return array_values( $by_date );
 	}
 
 	/**

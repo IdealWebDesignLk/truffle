@@ -1971,6 +1971,80 @@ a multi-day service whose span crosses the cutoff blocks unless every day
 past the cutoff has its own override; and a special service past the
 cutoff is still governed by its own pre-existing opt-in rule, not this one.
 
+## Bug: duplicate legacy + location-specific availability rows raced non-deterministically
+
+"For location november 7 is enabled for Rein Steinkühler in backend it
+shows as enabled but in calender it shows and not enable." Diagnosed live
+on the site (guide 79426, location 79410, 2026-11-07) with the user's own
+logged-in Chrome session, by instrumenting the admin calendar widget's own
+`fetch`/merge/render pipeline directly (wrapping `window.fetch`,
+`Array.prototype.forEach`, and the calendar root's `innerHTML` setter) to
+capture exactly what the browser received and did with it, rather than
+guessing from outside.
+
+**Root cause.** `fetch_guide_availability()` and `guide_available_on()`
+both query `WHERE guide_id = %d AND ( location_id = %d OR location_id = 0
+) AND availability_date BETWEEN %s AND %s` - deliberately matching a
+legacy `location_id = 0` row (set before that column existed, see
+0.38.0's migration notes above) alongside a newer location-specific row,
+so a guide's pre-migration days-off didn't silently stop applying. What
+that design didn't account for: a guide who had a date set **before** the
+migration, and then set that **same date again afterward** through the
+new per-location calendar, ends up with **two rows for one guide + date**
+- one via each unique key. Both get matched by the query above. Caught
+directly: a raw REST response for this guide's November grid came back
+containing both `{date:"2026-11-07", status:"blocked"}` and
+`{date:"2026-11-07", status:"available"}` in the same array. Neither query
+had an `ORDER BY`, so `$wpdb->get_results()` gave no guaranteed row order;
+the browser's own merge (`w.availability[r.date] = r.status`, deliberately
+"last write wins" so paging back to an earlier-loaded month doesn't erase
+a later month's data) ended up with whichever row happened to arrive last
+- different between page loads, different between wp-admin and the
+customer calendar, depending on nothing more than query timing. Ruled out
+along the way, with direct evidence: LiteSpeed Cache (installed and
+active on the site) reported `x-litespeed-cache: miss` on every single
+request tested, so no caching layer was involved; the deployed
+`guide-calendars.js` hashed byte-identical to this repo's source, so no
+stale-deploy issue; 20 isolated sequential fetches and 8 rounds of
+deliberately concurrent fetches were both 100% consistent - the
+inconsistency only showed up through the real page's own request pattern,
+which is what led to checking the raw response array for duplicates
+directly instead of theorizing further from outside.
+
+**Fix.** Both queries now add `ORDER BY location_id ASC`, guaranteeing the
+legacy `0` row is always returned before any real location's row.
+`fetch_guide_availability()` (the display-facing one, used by both the
+admin calendar and the guide's own front-end dashboard) additionally
+dedupes server-side into an associative array keyed by date before
+flattening back to a list - so it now always resolves to the
+location-specific row when both exist, deterministically, and never sends
+the client a duplicate to race on in the first place. `guide_available_on()`
+(the actual booking/blocking decision) never had a *correctness* bug here
+- it returns `false` the instant it sees any `'blocked'` row regardless of
+order, and every non-blocked row is `'available'` by definition, so the
+real booking engine was already immune - but it got the same `ORDER BY`
+anyway so a future reader isn't left re-deriving that proof from scratch,
+and so its own `$status_by_date` map (used by the booking-horizon check
+above) is built the same deterministic way as the display query.
+
+**Not fixed here, on purpose:** the stale `location_id = 0` rows
+themselves are left in place. Deleting them automatically once a
+location-specific row exists risked touching a guide's already-configured
+data for a location that *doesn't* have its own row yet (where the legacy
+row is still the only thing making that date apply there) - exactly the
+kind of live-data risk this plugin has been careful to avoid throughout
+the 0.38.0 migration and since. The query-level fix resolves the
+user-visible symptom without touching any existing row.
+
+Verified with two standalone PHP tests (Reflection + stubbed `$wpdb`,
+asserting the query string itself contains `ORDER BY location_id ASC` so
+a future edit can't silently drop it): one replaying the exact
+Nov-7-style duplicate (opposite statuses, "wrong" order) and confirming
+`fetch_guide_availability()` returns exactly one, correct row per date;
+another confirming `guide_available_on()`'s booking-horizon logic (0.39.0)
+still agrees under the same duplicate-row scenario, and that a 2026 date
+with no rows at all is completely unaffected.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
