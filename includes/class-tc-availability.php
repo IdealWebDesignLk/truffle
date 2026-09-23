@@ -222,15 +222,23 @@ class TC_Availability {
 		// applying everywhere so it keeps blocking what it always did.
 		//
 		// A guide can end up with BOTH a legacy location_id = 0 row and a
-		// newer location-specific row for the same date (see the GitHub
-		// bug report and fix in fetch_guide_availability() above) - this
-		// method's own decision is unaffected by which one $wpdb happens
-		// to return first, since 'blocked' short-circuits below regardless
-		// of order and every non-blocked row is 'available' by definition,
-		// but ORDER BY here too so $status_by_date (used further down for
-		// the booking-horizon check) is built the same deterministic way
-		// as the display-facing query, rather than leaving a future
-		// reader to re-derive that this particular order doesn't matter.
+		// newer location-specific row for the same date (see the GitHub bug
+		// report and fix in fetch_guide_availability() above) - e.g. an old
+		// 'blocked' row from before per-location availability existed, and
+		// a later, deliberate 'available' row set for this exact location
+		// since. GitHub follow-up: this method originally short-circuited
+		// to false the moment it saw ANY 'blocked' row, regardless of
+		// whether a later, more specific row superseded it - so a guide
+		// correctly shown "available" at one location in wp-admin (after
+		// the fetch_guide_availability() fix) could still be wrongly
+		// treated as blocked there by the actual booking engine, since
+		// this loop never got as far as the row that overrode it. Now
+		// resolves every date to ONE status first - ORDER BY location_id
+		// ASC plus last-write-wins here mirrors fetch_guide_availability()
+		// exactly, so the row that display already prefers is the same
+		// row this decision is based on - and only THEN checks the
+		// resolved status per day below, instead of reacting to raw rows
+		// as they stream in.
 		$table = $wpdb->prefix . 'tc_guide_availability';
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
@@ -246,7 +254,9 @@ class TC_Availability {
 		$status_by_date = array();
 		foreach ( $rows as $row ) {
 			$status_by_date[ $row->availability_date ] = $row->status;
-			if ( 'blocked' === $row->status ) {
+		}
+		foreach ( $status_by_date as $status ) {
+			if ( 'blocked' === $status ) {
 				return false;
 			}
 		}

@@ -2019,13 +2019,10 @@ dedupes server-side into an associative array keyed by date before
 flattening back to a list - so it now always resolves to the
 location-specific row when both exist, deterministically, and never sends
 the client a duplicate to race on in the first place. `guide_available_on()`
-(the actual booking/blocking decision) never had a *correctness* bug here
-- it returns `false` the instant it sees any `'blocked'` row regardless of
-order, and every non-blocked row is `'available'` by definition, so the
-real booking engine was already immune - but it got the same `ORDER BY`
-anyway so a future reader isn't left re-deriving that proof from scratch,
-and so its own `$status_by_date` map (used by the booking-horizon check
-above) is built the same deterministic way as the display query.
+got the same `ORDER BY` too, on the reasoning (later proven wrong - see
+the follow-up section right below) that it didn't need the same
+last-write-wins dedup, since it returns `false` the instant it sees any
+`'blocked'` row and every non-blocked row is `'available'` by definition.
 
 **Not fixed here, on purpose:** the stale `location_id = 0` rows
 themselves are left in place. Deleting them automatically once a
@@ -2044,6 +2041,64 @@ Nov-7-style duplicate (opposite statuses, "wrong" order) and confirming
 another confirming `guide_available_on()`'s booking-horizon logic (0.39.0)
 still agrees under the same duplicate-row scenario, and that a 2026 date
 with no rows at all is completely unaffected.
+
+## Follow-up (0.39.2): the booking engine still had the same bug, in a sharper form
+
+"He is available on Akersloot on nov 7 and he is not available on Sint
+Maarten... still in frontend it shows nov 7 he is not available for
+Akersloot." 0.39.1 fixed what wp-admin and the guide dashboard *display*,
+but not what the customer calendar actually *decides* - and this report
+proved it, since it's a case the earlier reasoning had explicitly (and
+wrongly) waved off as already safe.
+
+**The actual bug.** `guide_available_on()`'s original loop did:
+```php
+foreach ( $rows as $row ) {
+    $status_by_date[ $row->availability_date ] = $row->status;
+    if ( 'blocked' === $row->status ) {
+        return false;
+    }
+}
+```
+This returns `false` the instant it sees ANY row with status `'blocked'`
+for the date in question - it never checks whether a *later* row (now
+guaranteed later by `ORDER BY location_id ASC`, i.e. more specific to
+this location) overrides it. 0.39.1's own writeup argued this was fine
+because "it returns false the instant it sees any 'blocked' row
+regardless of order, and every non-blocked row is 'available' by
+definition" - true as a description of what the code does, but that's
+exactly the bug: it's an unconditional veto, not a resolution. For Rein
+at Akersloot on 2026-11-07, the legacy `location_id = 0` row says
+`'blocked'`; a newer `location_id = 79410` row says `'available'`. The
+display query (0.39.1) correctly resolves that to `'available'` for
+Akersloot. This function, unpatched, short-circuited on the legacy
+`'blocked'` row before ever reaching the row that actually supersedes it
+- so wp-admin correctly showed Rein as available at Akersloot, while the
+real booking engine, and therefore the customer calendar, still refused
+to book him there.
+
+**Fix.** Split the loop into two passes: first fully build
+`$status_by_date` (last write wins, same as `fetch_guide_availability()`,
+same `ORDER BY location_id ASC`), THEN check the *resolved* status per
+date for `'blocked'`. A multi-day service still correctly blocks its
+whole span if any single resolved day in it is blocked - that part of
+the contract is unchanged, just now operating on resolved values instead
+of raw, possibly-superseded ones.
+
+Verified with a standalone PHP test covering: the exact reported
+scenario (legacy blocked + specific available -> available); the mirror
+case (legacy available + specific blocked, i.e. a guide's genuine,
+deliberate day off set after the legacy row -> still blocked, proving
+this isn't "available always wins" either, just "the later/more-specific
+row wins"); a single row with no duplicate, both ways, as a sanity
+check; and a multi-day span where only one of its days resolves to
+blocked among otherwise-available days, confirming the whole span still
+blocks correctly. The earlier 0.39.1 test suite's own "duplicate
+blocked+available past cutoff" case had its *expectation* corrected to
+match - it had encoded the old, buggy short-circuit behavior as the
+`PASS` condition, which is exactly the trap this whole follow-up came
+from: proving code is order-independent is not the same as proving it's
+correct.
 
 ## Testing performed
 
