@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.39.2
+Stable tag: 0.40.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,15 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.40.0 =
+* The site's payment-gateway surcharge (PayPal/card/Trustly/Sofort) now
+  applies to bookings too - it previously only worked for normal shop
+  orders, since bookings go straight to a "Pay for order" page that
+  never touches the cart the surcharge snippet depends on. The fee now
+  shows in the booking summary and updates live as the customer picks a
+  payment method, and is always correctly applied to the actual charge
+  regardless of whether that live preview ran.
 
 = 0.39.2 =
 * Fixed a follow-up to 0.39.1: the actual booking engine could still

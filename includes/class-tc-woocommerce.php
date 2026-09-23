@@ -46,6 +46,16 @@ class TC_Woocommerce {
 		// directly) should see one prominent way back to it - see
 		// render_guide_dashboard_link().
 		add_action( 'woocommerce_account_dashboard', array( __CLASS__, 'render_guide_dashboard_link' ) );
+		// GitHub follow-up - a payment-gateway surcharge (PayPal/card/
+		// Trustly/Sofort) the site already charges on a normal shop order,
+		// via a site-level snippet hooked to woocommerce_cart_calculate_fees,
+		// never fires for a TC Booking order at all - see
+		// apply_gateway_fee_before_payment()'s own docblock for why, and
+		// this file's header for why bookings never touch WC()->cart in
+		// the first place.
+		add_action( 'woocommerce_before_pay_action', array( __CLASS__, 'apply_gateway_fee_before_payment' ) );
+		add_action( 'wp_ajax_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
+		add_action( 'wp_ajax_nopriv_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
 	}
 
 	/**
@@ -61,6 +71,29 @@ class TC_Woocommerce {
 		$on_account_page = function_exists( 'is_account_page' ) && is_account_page();
 		if ( $on_pay_page || $on_account_page ) {
 			wp_enqueue_style( 'tc-booking-app', TC_BOOKING_URL . 'public/css/booking-app.css', array(), TC_BOOKING_VERSION );
+		}
+
+		// Gateway-fee live preview (see apply_gateway_fee_before_payment())
+		// only makes sense on this exact order's own pay page, and only for
+		// a TC Booking order - a normal shop order paid via this same route
+		// already gets its fee from the site's own cart-fees snippet on the
+		// rare path that still applies to it.
+		if ( $on_pay_page ) {
+			$order_id = absint( get_query_var( 'order-pay' ) );
+			$order    = $order_id ? wc_get_order( $order_id ) : null;
+			if ( $order && $order->get_meta( '_tc_booking_id' ) ) {
+				wp_enqueue_script( 'tc-pay-gateway-fee', TC_BOOKING_URL . 'public/js/pay-gateway-fee.js', array(), TC_BOOKING_VERSION, true );
+				wp_localize_script(
+					'tc-pay-gateway-fee',
+					'tcPayGatewayFee',
+					array(
+						'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+						'nonce'    => wp_create_nonce( 'tc-pay-fee' ),
+						'orderId'  => $order->get_id(),
+						'orderKey' => $order->get_order_key(),
+					)
+				);
+			}
 		}
 	}
 
@@ -102,6 +135,23 @@ class TC_Woocommerce {
 			array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
 		);
 
+		// GitHub follow-up - a payment-gateway surcharge, once applied by
+		// apply_gateway_fee() (see that method's own docblock), lives on
+		// the order as a tagged WC_Order_Item_Fee - shown here, and the
+		// total below read from $order->get_total() rather than $b['total']
+		// (the original booking price snapshot), so this panel and
+		// WooCommerce's own order-review table underneath it always agree,
+		// both being driven by the same live order.
+		$fee_label  = '';
+		$fee_amount = 0.0;
+		foreach ( $order->get_items( 'fee' ) as $fee_item ) {
+			if ( 'yes' === $fee_item->get_meta( '_tc_gateway_fee', true ) ) {
+				$fee_label  = $fee_item->get_name();
+				$fee_amount = (float) $fee_item->get_total();
+				break;
+			}
+		}
+
 		echo '<div id="tc-checkout-summary-root"><div class="tc-card">';
 		echo '<h2 class="tc-title">' . esc_html__( 'Jouw boeking', 'tc-booking' ) . '</h2>';
 		foreach ( $rows as $row ) {
@@ -110,8 +160,12 @@ class TC_Woocommerce {
 			}
 			echo '<div class="tc-rline"><span class="l">' . esc_html( $row[0] ) . '</span><span>' . esc_html( $row[1] ) . '</span></div>';
 		}
+		if ( $fee_amount > 0 ) {
+			echo '<div class="tc-rline"><span class="l">' . esc_html( $fee_label ) . '</span><span>&euro;' .
+				esc_html( number_format_i18n( $fee_amount, 2 ) ) . '</span></div>';
+		}
 		echo '<div class="tc-rline total"><span class="l">' . esc_html__( 'Totaal', 'tc-booking' ) . '</span><span class="r">&euro;' .
-			esc_html( number_format_i18n( (float) $b['total'], 2 ) ) . '</span></div>';
+			esc_html( number_format_i18n( (float) $order->get_total(), 2 ) ) . '</span></div>';
 		echo '</div></div>';
 	}
 
@@ -405,6 +459,167 @@ class TC_Woocommerce {
 		$item->set_subtotal( $amount );
 		$item->set_total( $amount );
 		$order->add_item( $item );
+	}
+
+	/**
+	 * Same fee percentage and per-language labels as a site-level snippet
+	 * this business already has (hooked to woocommerce_cart_calculate_fees),
+	 * which correctly charges this for a normal shop order bought through
+	 * the cart - kept in exact sync deliberately, since this table exists
+	 * purely to cover the one path that snippet's own hook can never see: a
+	 * TC Booking order, which never touches WC()->cart at all (see this
+	 * file's header, and apply_gateway_fee_before_payment() below). Reads
+	 * the URL the same way that snippet does (a WPML language prefix -
+	 * /en/, /de/, bare for Dutch) rather than going through TC_WPML, so a
+	 * change to either stays a one-line edit to keep both in sync, not a
+	 * shared-dependency refactor.
+	 */
+	private static function gateway_fee_schedule() {
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+
+		$lang = 'nl';
+		if ( strpos( $request_uri, '/en/' ) === 0 ) {
+			$lang = 'en';
+		} elseif ( strpos( $request_uri, '/de/' ) === 0 ) {
+			$lang = 'de';
+		}
+
+		switch ( $lang ) {
+			case 'en':
+				$labels = array(
+					'ppcp-gateway'             => 'PayPal Fee',
+					'ppcp-card-button-gateway' => 'Credit Card Fee',
+					'ppcp-trustly'             => 'Trustly Fee',
+					'paypro_wc_gateway_sofort' => 'Sofort Fee',
+				);
+				break;
+			case 'de':
+				$labels = array(
+					'ppcp-gateway'             => 'PayPal-Gebühr',
+					'ppcp-card-button-gateway' => 'Kreditkartengebühr',
+					'ppcp-trustly'             => 'Trustly-Gebühr',
+					'paypro_wc_gateway_sofort' => 'Sofort-Gebühr',
+				);
+				break;
+			default: // Dutch.
+				$labels = array(
+					'ppcp-gateway'             => 'PayPal Toeslag',
+					'ppcp-card-button-gateway' => 'Creditcard Toeslag',
+					'ppcp-trustly'             => 'Trustly Toeslag',
+					'paypro_wc_gateway_sofort' => 'Sofort Toeslag',
+				);
+				break;
+		}
+
+		$schedule = array();
+		foreach ( $labels as $gateway_id => $label ) {
+			$schedule[ $gateway_id ] = array( 'fee' => 4.7, 'label' => $label );
+		}
+		return $schedule;
+	}
+
+	/**
+	 * Applies (or removes/replaces) a payment-gateway surcharge fee line on
+	 * $order for $payment_method_id, mirroring the site's own cart-fees
+	 * snippet: percentage of the order's own item subtotal, excluding
+	 * shipping and any existing fee - see gateway_fee_schedule(). Always
+	 * clears any previously-applied gateway fee first (tagged via
+	 * '_tc_gateway_fee' item meta, so it can be found and removed without
+	 * touching any other fee this order might ever carry) - switching
+	 * payment methods must replace the fee, never stack a second one on
+	 * top. No tax, matching every other line item on a TC Booking order
+	 * (see add_product_line()'s own docblock) - the placeholder products
+	 * are already tax_status 'none', and this fee follows suit explicitly
+	 * since it isn't backed by one.
+	 *
+	 * @return bool True if the order's total actually changed - callers use
+	 *              this to decide whether a customer-visible refresh (the
+	 *              pay page's live preview reloading itself) is warranted.
+	 */
+	private static function apply_gateway_fee( WC_Order $order, $payment_method_id ) {
+		$total_before = (float) $order->get_total();
+
+		foreach ( $order->get_items( 'fee' ) as $item_id => $fee_item ) {
+			if ( 'yes' === $fee_item->get_meta( '_tc_gateway_fee', true ) ) {
+				$order->remove_item( $item_id );
+			}
+		}
+
+		$schedule = self::gateway_fee_schedule();
+		if ( isset( $schedule[ $payment_method_id ] ) ) {
+			$subtotal = 0.0;
+			foreach ( $order->get_items() as $line_item ) {
+				$subtotal += (float) $line_item->get_subtotal();
+			}
+			$amount = round( ( $subtotal * (float) $schedule[ $payment_method_id ]['fee'] ) / 100, 2 );
+			if ( $amount > 0 ) {
+				$fee_item = new WC_Order_Item_Fee();
+				$fee_item->set_name( $schedule[ $payment_method_id ]['label'] );
+				$fee_item->set_amount( $amount );
+				$fee_item->set_total( $amount );
+				$fee_item->set_tax_status( 'none' );
+				$fee_item->add_meta_data( '_tc_gateway_fee', 'yes', true );
+				$order->add_item( $fee_item );
+			}
+		}
+
+		$order->calculate_totals();
+		$order->save();
+
+		return abs( $total_before - (float) $order->get_total() ) > 0.001;
+	}
+
+	/**
+	 * The authoritative application of the payment-gateway surcharge - the
+	 * charge itself is always correct after this runs, regardless of
+	 * whether the pay page's own live-preview JS (public/js/pay-gateway-
+	 * fee.js, purely a display convenience) ever ran at all.
+	 *
+	 * woocommerce_before_pay_action fires from WC_Form_Handler::pay_action()
+	 * with $_POST['payment_method'] already set, synchronously, before the
+	 * chosen gateway ever processes the charge - the one moment this plugin
+	 * can reliably know which gateway a TC Booking customer picked, since
+	 * create_order_for_booking() creates the order (see this file's header)
+	 * before any payment method has been chosen at all.
+	 */
+	public static function apply_gateway_fee_before_payment( $order ) {
+		if ( ! $order->get_meta( '_tc_booking_id' ) ) {
+			return; // Not a TC Booking order - the site's own cart-fees snippet already covers a normal shop order.
+		}
+		$payment_method_id = isset( $_POST['payment_method'] ) ? sanitize_key( wp_unslash( $_POST['payment_method'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( ! $payment_method_id ) {
+			return;
+		}
+		self::apply_gateway_fee( $order, $payment_method_id );
+	}
+
+	/**
+	 * Backs public/js/pay-gateway-fee.js's live preview - lets the pay
+	 * page's own displayed total (render_booking_summary() and
+	 * WooCommerce's native order-review table underneath it, both reading
+	 * the same live $order) already match what apply_gateway_fee_before_
+	 * payment() will actually charge, before the customer commits to
+	 * paying, rather than surprising them with a higher amount at the last
+	 * moment. Guest-accessible (nopriv) like WooCommerce's own pay-for-
+	 * order page itself - the order key, not a login, is what proves this
+	 * request is allowed to touch this specific order.
+	 */
+	public static function ajax_preview_gateway_fee() {
+		check_ajax_referer( 'tc-pay-fee', 'nonce' );
+
+		$order_id          = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+		$order_key         = isset( $_POST['order_key'] ) ? wc_clean( wp_unslash( $_POST['order_key'] ) ) : '';
+		$payment_method_id = isset( $_POST['payment_method'] ) ? sanitize_key( wp_unslash( $_POST['payment_method'] ) ) : '';
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order || ! $order_key || ! hash_equals( $order->get_order_key(), $order_key )
+			|| ! $order->get_meta( '_tc_booking_id' ) || ! $order->needs_payment()
+		) {
+			wp_send_json_error();
+		}
+
+		$changed = self::apply_gateway_fee( $order, $payment_method_id );
+		wp_send_json_success( array( 'changed' => $changed ) );
 	}
 
 	public static function cancel_order( $order_id ) {

@@ -2100,6 +2100,88 @@ match - it had encoded the old, buggy short-circuit behavior as the
 from: proving code is order-independent is not the same as proving it's
 correct.
 
+## Payment-gateway surcharge now applies to bookings too
+
+"I have this code on website to add extra payment gateway fee but seems
+its not applying to our services when checkout." The site already had a
+working snippet adding a PayPal/card/Trustly/Sofort surcharge (a real
+cost those providers charge the business) via
+`woocommerce_cart_calculate_fees`, correctly applied to a normal shop
+order. It never fired for a booking order, because - as this file's own
+header has said since the very first WooCommerce integration work -
+"this plugin never uses the standard cart/checkout flow": `create_order_
+for_booking()` builds and finalizes the order directly via
+`wc_create_order()`, and the customer is sent straight to WooCommerce's
+"Pay for order" page (`get_checkout_payment_url()`). That page never
+touches `WC()->cart`, so `woocommerce_cart_calculate_fees` - a cart-only
+hook - has nothing to fire on.
+
+**The core problem this design has to solve:** unlike a normal cart
+checkout, the order already exists, fully priced, before the customer
+has chosen a payment method at all - `create_order_for_booking()` runs
+long before that choice is made. There's no cart-totals recalculation
+pass on the pay-for-order page the way there is on `/checkout/`, so
+nothing re-prices the order as the customer picks a gateway.
+
+**Two-part fix, deliberately split into "what's charged" and "what's
+shown":**
+
+1. **Authoritative charge** - `TC_Woocommerce::apply_gateway_fee_before_
+   payment()`, hooked to `woocommerce_before_pay_action`. This is
+   WooCommerce core's own hook, fired from `WC_Form_Handler::pay_action()`
+   with `$_POST['payment_method']` already set, synchronously, before the
+   chosen gateway's `process_payment()` ever runs (verified against
+   WooCommerce core source directly, not assumed) - the one moment this
+   plugin can reliably know which gateway a booking customer picked. It
+   adds/replaces a `WC_Order_Item_Fee` on the order (percentage of the
+   order's own item subtotal, mirroring the site's existing snippet's
+   `$cart->get_subtotal()` math), tagged with `_tc_gateway_fee` item meta
+   so it can always be found and replaced rather than stacked if the
+   customer switches gateways. This alone guarantees the charge is
+   correct, independent of anything client-side.
+
+2. **Live preview** - `public/js/pay-gateway-fee.js` + a new `wp_ajax_tc_
+   preview_gateway_fee` handler, purely so what the customer SEES before
+   clicking Pay already matches what they'll be charged, rather than a
+   last-second surprise. WooCommerce's own order-review table on this
+   page (`templates/checkout/form-pay.php`) has no stable per-row CSS
+   class to patch in place - checked directly against WooCommerce's own
+   template source rather than guessed, since every row there is a bare
+   `<tr>` distinguished only by its translated label text. Patching
+   individual DOM nodes would have been fragile against that. Instead:
+   the AJAX call applies the SAME server-side fee logic (so the order is
+   already correctly saved), then the page does a full reload -
+   WooCommerce's native table and this plugin's own `render_booking_
+   summary()` panel (now reading `$order->get_total()` live instead of
+   the original static booking-price snapshot) both re-render fresh from
+   the same already-correct order, so they can never disagree.
+
+   The reload only fires when `apply_gateway_fee()` reports the total
+   actually changed - otherwise the same "apply once for whatever's
+   selected on load" call that has to run on every page load (since the
+   customer might never touch the radio buttons) would reload every
+   single time, forever. The chosen gateway survives the reload via a
+   `?tc_pm=` URL param the JS reads back to re-check the right radio.
+
+**Fee schedule kept as a literal duplicate, not shared code.** `gateway_
+fee_schedule()` mirrors the site's own snippet's percentage/labels/
+language-detection exactly, rather than refactoring both into one shared
+place - the snippet lives outside this plugin (a site-level mu-plugin/
+theme addition, not part of this repository), so there's no single file
+both could import from without a much bigger restructuring; keeping them
+in sync is a one-line edit on either side if the fee or labels ever
+change, which is judged simpler than a cross-codebase shared dependency
+for four small config arrays.
+
+Verified with a standalone PHP test (stub `WC_Order`/`WC_Order_Item_Fee`/
+`WC_Order_Item_Product` classes, since the real WooCommerce classes
+aren't part of this repo) covering: an unrecognized gateway adds no fee;
+a recognized one adds the correct percentage-of-subtotal amount, tagged
+and labeled correctly; the label follows the URL's language prefix the
+same way the original snippet does; switching gateways replaces the fee
+rather than stacking a second one; and reapplying the same gateway twice
+reports no change, which is exactly what prevents the JS reload loop.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
