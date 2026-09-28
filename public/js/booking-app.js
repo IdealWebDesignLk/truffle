@@ -113,6 +113,11 @@
 		lightboxUrl: null,
 		guideInfoOpen: false,
 		extraInfoKey: null,
+		// GitHub follow-up to issues #75/#76 - {iso, specialId} of a date
+		// clicked while it's open for BOTH the currently viewed service and
+		// a special one, waiting on the customer to choose which to book -
+		// see renderDateChoiceModal(). null the rest of the time.
+		dateChoice: null,
 		submitting: false,
 		error: null,
 	};
@@ -449,7 +454,7 @@
 
 		root.innerHTML = '<div class="tc-progress">' + progress + '</div><div class="tc-card">' +
 			( state.error ? '<div class="tc-error">' + escapeHtml( state.error ) + '</div>' : '' ) +
-			body + '</div>' + renderLightbox() + renderGuideInfoModal() + renderExtraInfoModal();
+			body + '</div>' + renderLightbox() + renderGuideInfoModal() + renderExtraInfoModal() + renderDateChoiceModal();
 
 		attachHandlers();
 	}
@@ -505,6 +510,37 @@
 			'<div class="tc-modal-bio">' + escapeHtml( extra.description || '' ) + '</div>' +
 			'<button type="button" class="tc-btn primary tc-extra-info-close-btn" id="tc-extra-info-modal-close-btn">' + escapeHtml( I18N.close ) + '</button>' +
 			'</div></div>';
+	}
+
+	// GitHub follow-up to issues #75/#76 - opened from the calendar's
+	// 'dual' day cells (renderAvailabilityCalendar() above), when a date is
+	// open for both the currently viewed service and a special one at a
+	// location covered by more than one guide. Picking either just does
+	// what clicking a plain/overlay date cell already did - this only adds
+	// the choice itself, not a new booking path.
+	function renderDateChoiceModal() {
+		if ( ! state.dateChoice ) return '';
+		var normalService  = getService( state.serviceId );
+		var specialService = getService( state.dateChoice.specialId );
+		if ( ! normalService || ! specialService ) return '';
+		var dateLabel = parseDateStr( state.dateChoice.iso ).toLocaleDateString( jsLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' } );
+
+		function optionButton( attr, svc ) {
+			return '<div class="tc-svc-card tc-date-choice-option" ' + attr + '>' +
+				'<div class="svc-name">' + escapeHtml( svc.name ) + '</div>' +
+				'<div class="svc-meta"><span class="svc-price">' + fmt( svc.price ) + '</span></div>' +
+				'</div>';
+		}
+
+		return '<div class="tc-modal-overlay" id="tc-date-choice-modal">' +
+			'<div class="tc-modal-card tc-date-choice-card">' +
+			'<button type="button" class="tc-modal-close" id="tc-date-choice-modal-close" aria-label="' + escapeAttr( I18N.close ) + '">&times;</button>' +
+			'<div class="tc-modal-name">' + escapeHtml( i18nFmt( I18N.dateChoiceHeading, dateLabel ) ) + '</div>' +
+			'<p class="tc-modal-bio">' + escapeHtml( I18N.dateChoiceSub ) + '</p>' +
+			'<div class="tc-date-choice-options">' +
+			optionButton( 'data-choice-normal', normalService ) +
+			optionButton( 'data-choice-special', specialService ) +
+			'</div></div></div>';
 	}
 
 	function renderLocation() {
@@ -688,37 +724,52 @@
 			// dates are surfaced right on whichever (normal) service's
 			// calendar is currently showing, in that special service's own
 			// full color, rather than requiring it to be picked from the
-			// cards above first. Takes over the whole cell (color, label,
-			// click target) rather than just adding a marker - a guide
-			// opting into a special date already closes their regular
-			// calendar for that day (TC_Availability::guide_available_on()),
-			// so there's only ever one real answer for a date to show, not
-			// a mix to blend with the currently selected service's own
-			// status below.
+			// cards above first.
 			var overlay = isPast ? null : specialOverlayFor( iso );
+
+			var cell = null;
+			state.grid.forEach( function ( g ) { if ( g.date === iso ) cell = g; } );
+			var status    = cell ? cell.status : 'off';
+			var normalOpen = ! isPast && 'off' !== status;
+			// GitHub issue #73 - customers shouldn't be able to tell a day
+			// is almost full, only that it's open or not - 'limited'
+			// displays identically to 'available' (same label, same
+			// color). The underlying remaining-seat count is still tracked
+			// and enforced elsewhere (partySizeMax() above), just never
+			// shown here.
+			var displayStatus = 'limited' === status ? 'available' : status;
+
 			var cls, label, dayStyle, attrs;
-			if ( overlay ) {
+			if ( overlay && normalOpen ) {
+				// GitHub follow-up to issues #75/#76 - a location covered by
+				// more than one guide can genuinely have BOTH the currently
+				// viewed service and a special service open on the same
+				// date (one guide opted into the special day, a different
+				// guide is still free for the normal one) - only one of the
+				// two can actually be booked (TC_Availability::
+				// guide_available_on()'s booking-conflict check already
+				// closes the other the instant either is booked), so rather
+				// than silently picking one, this takes the customer to a
+				// choice popup instead of a plain date pick - see
+				// renderDateChoiceModal().
+				cls      = 'available dual';
+				label    = I18N.statusOpen;
+				dayStyle = '';
+				attrs    = ' data-dual-date="' + iso + '" data-dual-special="' + overlay.id + '"';
+			} else if ( overlay ) {
+				// Special takes over the whole cell - the normal service
+				// isn't open this date at all, so there's only one real
+				// answer here, not a mix to blend with its own status below.
 				cls      = 'available';
 				label    = I18N.statusOpen;
 				dayStyle = overlay.special_color ? ' style="background:' + escapeHtml( overlay.special_color ) + '19;color:' + escapeHtml( overlay.special_color ) + ';"' : '';
 				attrs    = ' data-special-svc="' + overlay.id + '" data-special-date="' + iso + '"';
 			} else {
-				var cell = null;
-				state.grid.forEach( function ( g ) { if ( g.date === iso ) cell = g; } );
-				var status    = cell ? cell.status : 'off';
-				var clickable = ! isPast && 'off' !== status;
-				// GitHub issue #73 - customers shouldn't be able to tell a
-				// day is almost full, only that it's open or not -
-				// 'limited' displays identically to 'available' (same
-				// label, same color). The underlying remaining-seat count
-				// is still tracked and enforced elsewhere (partySizeMax()
-				// above), just never shown here.
-				var displayStatus = 'limited' === status ? 'available' : status;
 				cls      = displayStatus;
 				label    = 'off' === displayStatus ? I18N.statusClosed : I18N.statusOpen;
 				dayStyle = ( specialColor && ! isPast && 'available' === displayStatus )
 					? ' style="background:' + escapeHtml( specialColor ) + '19;color:' + escapeHtml( specialColor ) + ';"' : '';
-				attrs    = clickable ? ' data-date="' + iso + '"' : '';
+				attrs    = normalOpen ? ' data-date="' + iso + '"' : '';
 			}
 			if ( isPast ) cls = 'past';
 			if ( iso === state.date ) cls += ' selected';
@@ -978,6 +1029,41 @@
 			};
 		}
 
+		// GitHub follow-up to issues #75/#76 - the choice popup itself.
+		// Picking either option does exactly what its own direct click
+		// already did elsewhere (a plain date pick, or selectServiceDate()),
+		// just reached via the choice instead of a silent auto-resolve.
+		var dateChoiceModal = document.getElementById( 'tc-date-choice-modal' );
+		if ( dateChoiceModal ) {
+			dateChoiceModal.onclick = function ( e ) {
+				if ( e.target === dateChoiceModal || e.target.id === 'tc-date-choice-modal-close' ) {
+					state.dateChoice = null;
+					render();
+				}
+			};
+			var choiceNormal = dateChoiceModal.querySelector( '[data-choice-normal]' );
+			if ( choiceNormal ) {
+				choiceNormal.onclick = function () {
+					var iso = state.dateChoice.iso;
+					state.dateChoice = null;
+					state.date       = iso;
+					state.extraQty   = {};
+					state.partySize  = 1;
+					state.guests     = [];
+					goNext();
+				};
+			}
+			var choiceSpecial = dateChoiceModal.querySelector( '[data-choice-special]' );
+			if ( choiceSpecial ) {
+				choiceSpecial.onclick = function () {
+					var specialId = state.dateChoice.specialId;
+					var iso       = state.dateChoice.iso;
+					state.dateChoice = null;
+					selectServiceDate( specialId, iso );
+				};
+			}
+		}
+
 		var prevMonth = document.getElementById( 'tc-prev-month' );
 		if ( prevMonth ) prevMonth.onclick = function () { state.monthOffset = Math.max( 0, state.monthOffset - 1 ); loadGrid(); loadSpecialOverlays(); };
 		var nextMonth = document.getElementById( 'tc-next-month' );
@@ -1019,6 +1105,17 @@
 		root.querySelectorAll( '.tc-avail-day[data-special-svc]' ).forEach( function ( el ) {
 			el.onclick = function () {
 				selectServiceDate( parseInt( el.dataset.specialSvc, 10 ), el.dataset.specialDate );
+			};
+		} );
+
+		// GitHub follow-up to issues #75/#76 - a date open for BOTH the
+		// currently viewed service and a special one opens the choice
+		// popup instead of resolving straight to either - see
+		// renderDateChoiceModal() and its own wiring further below.
+		root.querySelectorAll( '.tc-avail-day[data-dual-date]' ).forEach( function ( el ) {
+			el.onclick = function () {
+				state.dateChoice = { iso: el.dataset.dualDate, specialId: parseInt( el.dataset.dualSpecial, 10 ) };
+				render();
 			};
 		} );
 
@@ -1085,6 +1182,7 @@
 		// (see GitHub issue #4).
 		state.guide = state.guidesByLocation[ id ] || null;
 		state.guideInfoOpen = false;
+		state.dateChoice = null;
 		render();
 	}
 
@@ -1269,6 +1367,9 @@
 			render();
 		} else if ( state.extraInfoKey ) {
 			state.extraInfoKey = null;
+			render();
+		} else if ( state.dateChoice ) {
+			state.dateChoice = null;
 			render();
 		}
 	} );

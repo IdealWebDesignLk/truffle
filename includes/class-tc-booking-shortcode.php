@@ -113,6 +113,17 @@ class TC_Booking_Shortcode {
 					'legendAvailable'         => __( 'Beschikbaar', 'tc-booking' ),
 					'legendNotAvailable'      => __( 'Niet beschikbaar', 'tc-booking' ),
 
+					// GitHub follow-up to issues #75/#76 - a date open for
+					// both the currently viewed (normal) service and a
+					// special service, at a location covered by more than
+					// one guide, used to silently resolve to whichever one
+					// the overlay happened to pick. This popup lets the
+					// customer choose instead - see renderDateChoiceModal()
+					// in booking-app.js.
+					/* translators: %s: the date, already formatted */
+					'dateChoiceHeading'       => __( 'Twee opties beschikbaar op %s', 'tc-booking' ),
+					'dateChoiceSub'           => __( 'Beide ceremonies zijn op deze datum nog beschikbaar, maar niet allebei tegelijk - kies welke je wilt boeken. Zodra je er één boekt, is de andere niet meer beschikbaar op deze datum.', 'tc-booking' ),
+
 					// Party (group size) step
 					'howManyPeople'           => __( 'Met hoeveel personen kom je?', 'tc-booking' ),
 					// Note: %d/%s here are positional, not sprintf's %1$d/%2$s -

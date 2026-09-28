@@ -2252,6 +2252,70 @@ but the guide's own `$guide_rows` array never included it - just missed
 when that email was originally built. Added the same `Totaal` row the
 other two copies already have.
 
+## A date open for two services at once now asks the customer to choose (GitHub issues #75/#76)
+
+"In normal services calenders we show special dates. Sometimes we open
+normal service and special service on same date. And we serve only 1 -
+let's say if they booked normal service on that day, so guide is booked
+so special service will also not available since normal service get
+booked." The special-service overlay (`specialOverlayFor()` in
+booking-app.js) was built on an assumption stated right in its own old
+comment: "a guide opting into a special date already closes their
+regular calendar for that day... so there's only ever one real answer
+for a date to show." True for a single guide, but false the moment a
+location has more than one - guide A can opt into a Group Ceremony
+special day while guide B, covering the same location for the Private
+ceremony, is genuinely still free that same date. The overlay always
+took over the whole cell regardless, so clicking it silently booked
+whichever service the overlay happened to be showing - issue #75's
+report - with no way for the customer to get the other one instead.
+
+**Fix.** `renderAvailabilityCalendar()` now computes the currently-viewed
+service's own grid status AND the special overlay independently for
+every day (it already fetched both - the bug was only in how they got
+reconciled), and only when BOTH are genuinely open does anything change:
+a small corner dot marks the cell (`.tc-avail-day.dual` in
+booking-app.css) and clicking it opens a new choice popup
+(`renderDateChoiceModal()`) instead of auto-resolving. Either option in
+the popup does exactly what its own direct path already did elsewhere -
+picking the normal service just sets `state.date` and calls `goNext()`
+(the same as clicking a plain calendar cell); picking the special one
+calls the already-existing `selectServiceDate()` (the same function the
+overlay's own single-answer click already used). Nothing about how a
+booking gets created changed - only how the customer arrives at that
+choice when a real one exists. "Once you book one, the other is no
+longer available" (the business rule the report described) needed no
+new code at all: `TC_Availability::guide_available_on()`'s booking-
+conflict check (part 2) has always been global across every service
+regardless of special/normal, exactly for this reason - a real booking
+for either one already closes the guide out of the other automatically.
+
+**#76 didn't reproduce.** Its own repro steps describe marking a date
+as a Group Ceremony special day only, without touching Private's
+regular availability, and expected it to still show correctly on Group
+Ceremony's own calendar - i.e. the overlay showing independently of the
+normal service's own status. Built a full browser-harness test (mocked
+REST responses, real click-through) specifically to check this: a date
+with a special-only row (no row at all on the normal service's own
+grid, i.e. genuinely closed there) rendered correctly as the special
+service's own color/status in the overlay regardless, exactly as the
+issue asks for. Most likely this was the same underlying confusion as
+#75, from the customer-facing side rather than the code - reporting it
+as fixed pending confirmation on the live site with real guide/location
+data, rather than claiming a code change for a bug that didn't
+reproduce.
+
+Verified end-to-end with a browser harness (mocked `/locations`,
+`/guides`, `/services`, `/availability` responses covering three cases -
+a date open for both services, a date open for only the special one, a
+date open for only the normal one) driving the actual flow through
+clicks: confirmed the dual-indicator only appears on the genuinely dual
+date; confirmed picking the normal option from the popup lands on the
+correct service+date on the next step; confirmed picking the special
+option correctly switches `state.serviceId`; and confirmed both
+single-answer dates (special-only, normal-only) render and click through
+exactly as they did before this change, with no popup.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
