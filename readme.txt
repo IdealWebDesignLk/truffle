@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.43.0
+Stable tag: 0.43.1
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,13 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.43.1 =
+* The abandoned-checkout cleanup (0.41.0) now cancels an unpaid booking
+  after 10 minutes instead of 20, as originally requested. The
+  background check itself now runs every 5 minutes rather than 10, so a
+  booking crossing that line gets caught within roughly 5-15 minutes of
+  actually doing so, not up to 20.
 
 = 0.43.0 =
 * Added a coupon code field to the booking payment page. Bookings never

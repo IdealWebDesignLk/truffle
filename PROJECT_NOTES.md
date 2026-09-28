@@ -2386,6 +2386,48 @@ empty-field message shows without any network call, a server-side error
 message displays correctly and re-enables the button, and both the apply
 and remove buttons correctly trigger the page reload on success.
 
+## Pending-payment timeout tightened to the originally requested 10 minutes
+
+"Now we need to automatically cancel the orders and reopen the date
+availability if the booking is pending payment for 10mins." 0.41.0
+shipped this at 20 minutes instead of issue #78's own "e.g. 10 minutes"
+suggestion, deliberately, to leave room for a slower payment flow (3D
+Secure, iDEAL's redirect-and-back) before trusting it wasn't just a
+customer mid-payment. Explicitly asked to tighten it now -
+`TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES` (tc-booking.php) is 10.
+
+**The sweep interval had to change too, not just the constant.** It was
+also 10 minutes - equal to the new timeout - which would let a booking
+sit up to one full extra cycle (~20 minutes) past the threshold before
+the next run ever looked at it, silently defeating the point of
+tightening the number in the first place. `register_cron_schedule()` now
+registers a 5-minute interval instead, halving that worst case.
+
+**Changing the registered interval alone doesn't move an already-
+scheduled site.** WP-Cron stores the recurrence an event was scheduled
+with at the moment `wp_schedule_event()` ran - it doesn't retroactively
+follow whatever `register_cron_schedule()` returns later. An already-
+active site (this plugin self-updates from GitHub and never re-fires
+`register_activation_hook` - the same reasoning behind every other
+`maybe_*()` method in this codebase) would otherwise keep running the
+stale 10-minute job forever, invisibly out of sync with what the code
+now says. `maybe_schedule_cleanup_cron()` now checks `wp_get_schedule()`
+(the recurrence *currently in effect*, not just "is anything scheduled
+at all" - `wp_next_scheduled()` alone can't tell the two apart) against
+the new slug name, and if they don't match, clears the old event and
+reschedules fresh - the exact same migration shape `TC_Activator::
+maybe_upgrade()` already uses for the DB schema. Deliberately guards
+against needlessly rescheduling when already on the current interval too
+- doing that on every single `plugins_loaded` would keep resetting the
+timer and the job would never actually get a chance to fire.
+
+Verified with a standalone PHP test (fake in-memory WP-Cron state)
+covering all three cases: a fresh install schedules directly under the
+new slug with no unschedule call; a site still on the old v0.41.0
+10-minute schedule gets unscheduled once and migrated to the new one;
+and a site already on the new schedule makes neither call, confirming
+the guard against pointless timer resets actually works.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

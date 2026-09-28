@@ -80,23 +80,47 @@ class TC_Woocommerce {
 	}
 
 	/**
-	 * A 10-minute interval - WordPress core only ships hourly/twicedaily/
+	 * A 5-minute interval - WordPress core only ships hourly/twicedaily/
 	 * daily, too coarse for a cleanup sweep meant to release a date within
-	 * TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES (20 by default) of
-	 * abandonment, not up to an hour later.
+	 * TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES (10) of abandonment.
+	 * Deliberately shorter than that timeout itself (was equal to it, both
+	 * 10 minutes, until GitHub follow-up tightened the timeout) - a sweep
+	 * running exactly as often as the window it's checking could let a
+	 * booking sit up to one full extra cycle (here, up to ~20 minutes)
+	 * past the threshold before the next run catches it; running twice as
+	 * often keeps that worst case to roughly half the timeout instead.
 	 */
 	public static function register_cron_schedule( $schedules ) {
-		$schedules['tc_booking_ten_minutes'] = array(
-			'interval' => 10 * MINUTE_IN_SECONDS,
-			'display'  => __( 'Every 10 minutes (TC Booking)', 'tc-booking' ),
+		$schedules['tc_booking_five_minutes'] = array(
+			'interval' => 5 * MINUTE_IN_SECONDS,
+			'display'  => __( 'Every 5 minutes (TC Booking)', 'tc-booking' ),
 		);
 		return $schedules;
 	}
 
+	/**
+	 * GitHub follow-up - tightening the sweep interval (10 minutes -> 5)
+	 * needs more than just changing what register_cron_schedule() returns:
+	 * WP-Cron stores the recurrence an event was scheduled with at
+	 * schedule-time, so an already-active site's existing event (created
+	 * under the old 'tc_booking_ten_minutes' slug back in v0.41.0) would
+	 * otherwise keep running on that old interval forever, silently out of
+	 * sync with what this file now declares. wp_get_schedule() is what
+	 * actually tells us which recurrence is CURRENTLY in effect (unlike
+	 * wp_next_scheduled(), which only says whether anything is scheduled
+	 * at all) - if it doesn't match, clear the existing event and
+	 * reschedule fresh, the same migration shape TC_Activator::
+	 * maybe_upgrade() already uses for the DB schema.
+	 */
 	private static function maybe_schedule_cleanup_cron() {
-		if ( ! wp_next_scheduled( 'tc_booking_release_stale_pending' ) ) {
-			wp_schedule_event( time(), 'tc_booking_ten_minutes', 'tc_booking_release_stale_pending' );
+		if ( 'tc_booking_five_minutes' === wp_get_schedule( 'tc_booking_release_stale_pending' ) ) {
+			return;
 		}
+		$timestamp = wp_next_scheduled( 'tc_booking_release_stale_pending' );
+		if ( $timestamp ) {
+			wp_unschedule_event( $timestamp, 'tc_booking_release_stale_pending' );
+		}
+		wp_schedule_event( time(), 'tc_booking_five_minutes', 'tc_booking_release_stale_pending' );
 	}
 
 	/**

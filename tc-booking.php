@@ -3,7 +3,7 @@
  * Plugin Name:       TC Booking
  * Plugin URI:        https://truffelceremonie.com
  * Description:       Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a fully custom stack - data model, availability engine, admin panel, front-end, and WooCommerce checkout - for locations, services, and guides.
- * Version:           0.43.0
+ * Version:           0.43.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Ideal Web Design
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'TC_BOOKING_VERSION', '0.43.0' );
+define( 'TC_BOOKING_VERSION', '0.43.1' );
 define( 'TC_BOOKING_FILE', __FILE__ );
 define( 'TC_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TC_BOOKING_URL', plugin_dir_url( __FILE__ ) );
@@ -44,13 +44,13 @@ define( 'TC_BOOKING_HORIZON_CUTOFF', '2027-01-01' );
  * TC_Rest_Api::create_booking()) that's never paid for is auto-cancelled,
  * releasing its date, once it's been sitting unpaid this long. See
  * TC_Woocommerce::release_stale_pending_bookings() for the cron sweep
- * this drives. Kept generous (rather than the issue's own "e.g. 10
- * minutes") to avoid cancelling a customer still mid-payment on a slower
- * gateway flow (3D Secure, iDEAL redirect and back, etc.) - easy to
- * tighten later if abandoned dates still pile up faster than this clears
- * them.
+ * this drives. Explicitly requested as 10 minutes - the sweep itself
+ * (register_cron_schedule() in class-tc-woocommerce.php) runs every 5
+ * minutes, not 10, specifically so a booking crossing this threshold gets
+ * caught within 5-15 minutes of actually doing so, not up to a full
+ * cycle late.
  */
-define( 'TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES', 20 );
+define( 'TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES', 10 );
 
 /**
  * Autoload plugin classes on demand.
