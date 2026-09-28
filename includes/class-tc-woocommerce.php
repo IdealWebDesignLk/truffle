@@ -57,6 +57,17 @@ class TC_Woocommerce {
 		add_action( 'wp_ajax_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
 		add_action( 'wp_ajax_nopriv_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
 
+		// GitHub issue #77 - "no option to enter a coupon/discount code
+		// anywhere" on the pay-for-order page, the only "checkout" a TC
+		// Booking customer ever sees (see this file's own header). Same
+		// nonce action as the gateway-fee AJAX above ('tc-pay-fee') -
+		// both are just "an authenticated-by-order-key action against this
+		// specific pay page", not two separate concerns needing their own.
+		add_action( 'wp_ajax_tc_apply_coupon', array( __CLASS__, 'ajax_apply_coupon' ) );
+		add_action( 'wp_ajax_nopriv_tc_apply_coupon', array( __CLASS__, 'ajax_apply_coupon' ) );
+		add_action( 'wp_ajax_tc_remove_coupon', array( __CLASS__, 'ajax_remove_coupon' ) );
+		add_action( 'wp_ajax_nopriv_tc_remove_coupon', array( __CLASS__, 'ajax_remove_coupon' ) );
+
 		// GitHub issue #78 - auto-releases a booking date abandoned at
 		// checkout, never paid for - see release_stale_pending_bookings()'s
 		// own docblock. maybe_schedule_cleanup_cron() (not just
@@ -117,10 +128,17 @@ class TC_Woocommerce {
 					'tc-pay-gateway-fee',
 					'tcPayGatewayFee',
 					array(
-						'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
-						'nonce'    => wp_create_nonce( 'tc-pay-fee' ),
-						'orderId'  => $order->get_id(),
-						'orderKey' => $order->get_order_key(),
+						'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+						'nonce'          => wp_create_nonce( 'tc-pay-fee' ),
+						'orderId'        => $order->get_id(),
+						'orderKey'       => $order->get_order_key(),
+						// GitHub issue #77 - coupon-form messages the JS
+						// shows without a round trip to the server (an empty
+						// field) or when the AJAX request itself fails
+						// outright (network error, so no server message
+						// exists to show instead).
+						'couponRequired' => __( 'Vul een kortingscode in.', 'tc-booking' ),
+						'genericError'   => __( 'Er is iets misgegaan. Probeer het opnieuw.', 'tc-booking' ),
 					)
 				);
 			}
@@ -182,6 +200,15 @@ class TC_Woocommerce {
 			}
 		}
 
+		// GitHub issue #77 - "no option to enter a coupon/discount code
+		// anywhere" - see ajax_apply_coupon()/ajax_remove_coupon()'s own
+		// docblocks. get_coupon_codes() (not just checking discount_total,
+		// which a WC coupon set to 0% - unusual but valid - would leave at
+		// 0 despite a code genuinely being applied) is the real source of
+		// truth for "is one on this order right now."
+		$coupon_codes   = $order->get_coupon_codes();
+		$discount_total = (float) $order->get_discount_total();
+
 		echo '<div id="tc-checkout-summary-root"><div class="tc-card">';
 		echo '<h2 class="tc-title">' . esc_html__( 'Jouw boeking', 'tc-booking' ) . '</h2>';
 		foreach ( $rows as $row ) {
@@ -190,10 +217,32 @@ class TC_Woocommerce {
 			}
 			echo '<div class="tc-rline"><span class="l">' . esc_html( $row[0] ) . '</span><span>' . esc_html( $row[1] ) . '</span></div>';
 		}
+		if ( $discount_total > 0 ) {
+			echo '<div class="tc-rline"><span class="l">' . esc_html__( 'Korting', 'tc-booking' ) . '</span><span>-&euro;' .
+				esc_html( number_format_i18n( $discount_total, 2 ) ) . '</span></div>';
+		}
 		if ( $fee_amount > 0 ) {
 			echo '<div class="tc-rline"><span class="l">' . esc_html( $fee_label ) . '</span><span>&euro;' .
 				esc_html( number_format_i18n( $fee_amount, 2 ) ) . '</span></div>';
 		}
+
+		echo '<div class="tc-coupon-section" id="tc-coupon-section">';
+		if ( $coupon_codes ) {
+			foreach ( $coupon_codes as $code ) {
+				echo '<div class="tc-coupon-applied">' .
+					'<span>' . esc_html( sprintf( __( 'Kortingscode toegepast: %s', 'tc-booking' ), strtoupper( $code ) ) ) . '</span>' .
+					'<button type="button" class="tc-link-btn" data-remove-coupon="' . esc_attr( $code ) . '">' . esc_html__( 'Verwijderen', 'tc-booking' ) . '</button>' .
+					'</div>';
+			}
+		} else {
+			echo '<div class="tc-coupon-form">' .
+				'<input type="text" id="tc-coupon-input" placeholder="' . esc_attr__( 'Kortingscode', 'tc-booking' ) . '" autocomplete="off">' .
+				'<button type="button" class="tc-btn" id="tc-coupon-apply">' . esc_html__( 'Toepassen', 'tc-booking' ) . '</button>' .
+				'</div>';
+		}
+		echo '<div class="tc-coupon-message" id="tc-coupon-message"></div>';
+		echo '</div>';
+
 		echo '<div class="tc-rline total"><span class="l">' . esc_html__( 'Totaal', 'tc-booking' ) . '</span><span class="r">&euro;' .
 			esc_html( number_format_i18n( (float) $order->get_total(), 2 ) ) . '</span></div>';
 		echo '</div></div>';
@@ -637,19 +686,97 @@ class TC_Woocommerce {
 	public static function ajax_preview_gateway_fee() {
 		check_ajax_referer( 'tc-pay-fee', 'nonce' );
 
-		$order_id          = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
-		$order_key         = isset( $_POST['order_key'] ) ? wc_clean( wp_unslash( $_POST['order_key'] ) ) : '';
+		$order = self::validated_pay_order();
+		if ( ! $order ) {
+			wp_send_json_error();
+		}
+
 		$payment_method_id = isset( $_POST['payment_method'] ) ? sanitize_key( wp_unslash( $_POST['payment_method'] ) ) : '';
+		$changed           = self::apply_gateway_fee( $order, $payment_method_id );
+		wp_send_json_success( array( 'changed' => $changed ) );
+	}
+
+	/**
+	 * Shared by every pay-page AJAX handler (gateway-fee preview, coupon
+	 * apply/remove below) - the order, once confirmed to be a TC Booking
+	 * order still awaiting payment AND that this specific request is
+	 * allowed to touch it. The order key (sent back from the pay page's
+	 * own URL - see enqueue_pay_page_assets()) is what proves that, the
+	 * same way WooCommerce's own guest-accessible pay-for-order page
+	 * itself is secured - not a login, since most TC Booking customers
+	 * never create an account at all.
+	 *
+	 * @return WC_Order|null
+	 */
+	private static function validated_pay_order() {
+		$order_id  = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+		$order_key = isset( $_POST['order_key'] ) ? wc_clean( wp_unslash( $_POST['order_key'] ) ) : '';
 
 		$order = wc_get_order( $order_id );
 		if ( ! $order || ! $order_key || ! hash_equals( $order->get_order_key(), $order_key )
 			|| ! $order->get_meta( '_tc_booking_id' ) || ! $order->needs_payment()
 		) {
+			return null;
+		}
+		return $order;
+	}
+
+	/**
+	 * GitHub issue #77 - "the checkout page should have a coupon code
+	 * field... letting the customer apply a discount code before paying."
+	 * $order->apply_coupon() is WooCommerce's own public API for exactly
+	 * this (validates the code - exists, not expired, usage limits,
+	 * minimum spend, etc. - the same rules a normal cart checkout enforces
+	 * - and returns a WP_Error with a real, translated message on any of
+	 * them rather than a generic failure) - nothing about coupon
+	 * validation needed reimplementing here, only where to surface it on a
+	 * page that skips WooCommerce's own cart/coupon UI entirely (see this
+	 * file's header).
+	 *
+	 * Doesn't need to know about the payment-gateway fee at all - a coupon
+	 * discount is a separate order-level adjustment that leaves each line
+	 * item's own subtotal (what apply_gateway_fee() bases its percentage
+	 * on) untouched, so the two features stay correct independently
+	 * without either needing to re-run the other.
+	 */
+	public static function ajax_apply_coupon() {
+		check_ajax_referer( 'tc-pay-fee', 'nonce' );
+
+		$order = self::validated_pay_order();
+		if ( ! $order ) {
+			wp_send_json_error( array( 'message' => __( 'Deze bestelling kon niet worden gevonden.', 'tc-booking' ) ) );
+		}
+
+		$code = isset( $_POST['coupon_code'] ) ? wc_clean( wp_unslash( $_POST['coupon_code'] ) ) : '';
+		if ( '' === $code ) {
+			wp_send_json_error( array( 'message' => __( 'Vul een kortingscode in.', 'tc-booking' ) ) );
+		}
+
+		$result = $order->apply_coupon( $code );
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+		}
+
+		$order->calculate_totals();
+		$order->save();
+
+		wp_send_json_success( array( 'total_html' => wc_price( $order->get_total() ) ) );
+	}
+
+	public static function ajax_remove_coupon() {
+		check_ajax_referer( 'tc-pay-fee', 'nonce' );
+
+		$order = self::validated_pay_order();
+		if ( ! $order ) {
 			wp_send_json_error();
 		}
 
-		$changed = self::apply_gateway_fee( $order, $payment_method_id );
-		wp_send_json_success( array( 'changed' => $changed ) );
+		$code = isset( $_POST['coupon_code'] ) ? wc_clean( wp_unslash( $_POST['coupon_code'] ) ) : '';
+		$order->remove_coupon( $code );
+		$order->calculate_totals();
+		$order->save();
+
+		wp_send_json_success( array( 'total_html' => wc_price( $order->get_total() ) ) );
 	}
 
 	public static function cancel_order( $order_id, $note = null ) {

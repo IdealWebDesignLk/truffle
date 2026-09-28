@@ -2316,6 +2316,76 @@ option correctly switches `state.serviceId`; and confirmed both
 single-answer dates (special-only, normal-only) render and click through
 exactly as they did before this change, with no popup.
 
+## A coupon code field on the pay-for-order page (GitHub issue #77)
+
+"The checkout page should have a coupon code field... letting the
+customer apply a discount code before paying." As established diagnosing
+this one: a TC Booking order never touches `WC()->cart` at all (this
+file's own header), so WooCommerce's own cart/coupon UI - and every
+coupon-validation rule bundled into it (expiry, usage limits, minimum
+spend, per-customer limits) - never reaches a booking. Rather than
+reimplementing any of that validation, this reuses WooCommerce's own
+public `WC_Order::apply_coupon()`/`remove_coupon()` (verified directly
+against WooCommerce's actual source - `apply_coupon()` returns `true` or
+a `WP_Error` carrying the exact same translated message a normal cart
+checkout would show, e.g. "Coupon code already applied!" or an
+expired/usage-limit message) against the order that already exists by
+the time a customer reaches this page, the same way `apply_gateway_fee()`
+(v0.40.0) already worked around the same "no cart" gap for the payment
+surcharge.
+
+**Split the same way the gateway fee was:** `ajax_apply_coupon()`/
+`ajax_remove_coupon()` are the *only* path a coupon ever reaches an order
+through (unlike the gateway fee, there's no separate `woocommerce_
+before_pay_action` safety net needed here - a coupon isn't something that
+has to be freshly re-resolved at the moment of payment the way "which
+gateway did they pick" does, it just needs to be correct when the
+customer clicks Apply). `validated_pay_order()` is a new shared helper
+(also now used by the gateway-fee preview handler, previously duplicated
+inline) - the order key from the pay page's own URL is what proves a
+request is allowed to touch a specific order, the same way WooCommerce's
+own guest-accessible pay-for-order page is secured, since most TC Booking
+customers never create an account.
+
+**Doesn't interact with the gateway fee.** A coupon discount is an
+order-level adjustment WooCommerce applies by resetting each line item's
+`total` from its `subtotal` and reapplying every coupon on the order
+(`recalculate_coupons()`) - it never touches the `subtotal` value itself,
+which is exactly what `apply_gateway_fee()` bases its percentage on. The
+two features stay correct independently without either needing to know
+the other ran.
+
+**Same reload pattern as the gateway fee**, for the same reason:
+WooCommerce's own order-review table on this page has no stable per-row
+class to patch in place. `render_booking_summary()` now also shows a
+discount row (`get_discount_total()`) and either a coupon input/Apply
+button or the applied code with a Remove link (`get_coupon_codes()` -
+not just checking `discount_total > 0`, which a coupon set to a genuine
+0% would leave unmet despite a code actually being applied). `public/js/
+pay-gateway-fee.js` picked up the coupon form's wiring rather than
+becoming a second file - both concerns are "interactivity on this one
+page, against this one order," sharing the same localized config
+(`order_id`/`order_key`/`nonce`), and its own `reloadPage()` helper (now
+factored out of the gateway-fee-only `reloadWithPaymentMethod()`)
+preserves the currently-selected payment method's `?tc_pm=` across a
+coupon-triggered reload too.
+
+Verified with a standalone PHP test (stub `WC_Order` whose `apply_coupon()`
+/`remove_coupon()` are controlled to return known success/`WP_Error`
+results - WooCommerce's own coupon-validation internals were already
+confirmed correct by reading its actual source, not re-tested here)
+covering: a valid code applying successfully; an invalid/expired code's
+exact WooCommerce error message passing straight through; a wrong order
+key being rejected before `apply_coupon()` is ever called; an empty code
+being rejected client-side-equivalent without a wasted call; an
+already-paid order being rejected outright; a non-TC-Booking order being
+rejected (this mechanism never touches a normal shop order); and removing
+an applied coupon restoring the total. Also verified the actual rendered
+markup and JS interaction in a browser harness (mocked fetch): the
+empty-field message shows without any network call, a server-side error
+message displays correctly and re-enables the button, and both the apply
+and remove buttons correctly trigger the page reload on success.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
