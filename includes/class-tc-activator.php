@@ -33,6 +33,18 @@ class TC_Activator {
 		// Intentionally not dropping tables or the guide role on deactivation -
 		// only on uninstall (see uninstall.php) so a deactivate/reactivate cycle
 		// (plugin update, etc.) never loses guide availability data.
+
+		// GitHub issue #78 - the pending-payment cleanup cron (see
+		// TC_Woocommerce::maybe_schedule_cleanup_cron()) has nothing to run
+		// while deactivated (its own callback is only ever hooked from
+		// TC_Woocommerce::init(), which a deactivated plugin never reaches),
+		// but leaving the schedule itself registered would mean WP-Cron
+		// keeps firing a no-op event indefinitely - unschedule it here, the
+		// same as flush_rewrite_rules() above tidies up its own registration.
+		$timestamp = wp_next_scheduled( 'tc_booking_release_stale_pending' );
+		if ( $timestamp ) {
+			wp_unschedule_event( $timestamp, 'tc_booking_release_stale_pending' );
+		}
 	}
 
 	private static function create_tables() {

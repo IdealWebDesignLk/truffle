@@ -56,6 +56,36 @@ class TC_Woocommerce {
 		add_action( 'woocommerce_before_pay_action', array( __CLASS__, 'apply_gateway_fee_before_payment' ) );
 		add_action( 'wp_ajax_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
 		add_action( 'wp_ajax_nopriv_tc_preview_gateway_fee', array( __CLASS__, 'ajax_preview_gateway_fee' ) );
+
+		// GitHub issue #78 - auto-releases a booking date abandoned at
+		// checkout, never paid for - see release_stale_pending_bookings()'s
+		// own docblock. maybe_schedule_cleanup_cron() (not just
+		// register_activation_hook, in tc-booking.php) is what gets this
+		// scheduled on an already-active, self-updating site too - same
+		// reasoning, and same pattern, as TC_Activator::maybe_upgrade().
+		add_filter( 'cron_schedules', array( __CLASS__, 'register_cron_schedule' ) );
+		add_action( 'tc_booking_release_stale_pending', array( __CLASS__, 'release_stale_pending_bookings' ) );
+		self::maybe_schedule_cleanup_cron();
+	}
+
+	/**
+	 * A 10-minute interval - WordPress core only ships hourly/twicedaily/
+	 * daily, too coarse for a cleanup sweep meant to release a date within
+	 * TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES (20 by default) of
+	 * abandonment, not up to an hour later.
+	 */
+	public static function register_cron_schedule( $schedules ) {
+		$schedules['tc_booking_ten_minutes'] = array(
+			'interval' => 10 * MINUTE_IN_SECONDS,
+			'display'  => __( 'Every 10 minutes (TC Booking)', 'tc-booking' ),
+		);
+		return $schedules;
+	}
+
+	private static function maybe_schedule_cleanup_cron() {
+		if ( ! wp_next_scheduled( 'tc_booking_release_stale_pending' ) ) {
+			wp_schedule_event( time(), 'tc_booking_ten_minutes', 'tc_booking_release_stale_pending' );
+		}
 	}
 
 	/**
@@ -622,13 +652,74 @@ class TC_Woocommerce {
 		wp_send_json_success( array( 'changed' => $changed ) );
 	}
 
-	public static function cancel_order( $order_id ) {
+	public static function cancel_order( $order_id, $note = null ) {
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
 			return;
 		}
 		if ( ! in_array( $order->get_status(), array( 'cancelled', 'refunded' ), true ) ) {
-			$order->update_status( 'cancelled', __( 'Cancelled from TC Booking admin.', 'tc-booking' ) );
+			$order->update_status( 'cancelled', null === $note ? __( 'Cancelled from TC Booking admin.', 'tc-booking' ) : $note );
+		}
+	}
+
+	/**
+	 * GitHub issue #78 - "the order - and the date block - is created at
+	 * checkout, before payment... unpaid 'Pending payment' orders never
+	 * expire or get cleaned up, so a date can become permanently unbookable
+	 * because of one abandoned checkout." create_order_for_booking() has to
+	 * create the order (and assign a guide - see TC_Rest_Api::create_booking())
+	 * before the customer has paid, since that's the only way to send them
+	 * straight to a "Pay for order" page with a real order already behind
+	 * it - so a booking left unpaid for TC_BOOKING_PENDING_PAYMENT_TIMEOUT_
+	 * MINUTES is auto-cancelled instead, releasing the date the same way an
+	 * admin manually cancelling it already does (cancel_order() above,
+	 * which flows through the existing woocommerce_order_status_changed ->
+	 * sync_booking_from_order() -> TC_Availability's own booking-conflict
+	 * query, already excluding a 'cancelled' _tc_status).
+	 *
+	 * Scoped to TC Booking orders only (_tc_wc_order_id meta) - this sweep
+	 * has no opinion on a normal shop order's own pending-payment window,
+	 * which WooCommerce's own "Hold stock" setting already governs
+	 * separately (see this method's own file's header for why bookings
+	 * never go through that cart-based flow at all).
+	 *
+	 * Re-checks needs_payment() right before cancelling, not just this
+	 * plugin's own _tc_status meta - a real payment completing in the
+	 * narrow window between this query running and the cancellation itself
+	 * must never be undone by this sweep.
+	 */
+	public static function release_stale_pending_bookings() {
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - MINUTE_IN_SECONDS * TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES );
+
+		$stale_bookings = get_posts(
+			array(
+				'post_type'      => TC_CPT::BOOKING,
+				'post_status'    => 'publish',
+				'numberposts'    => -1,
+				'date_query'     => array( array( 'column' => 'post_date_gmt', 'before' => $cutoff ) ),
+				'meta_query'     => array(
+					array( 'key' => '_tc_status', 'value' => 'pending_payment' ),
+				),
+			)
+		);
+
+		foreach ( $stale_bookings as $booking ) {
+			$order_id = (int) get_post_meta( $booking->ID, '_tc_wc_order_id', true );
+			if ( ! $order_id ) {
+				continue;
+			}
+			$order = wc_get_order( $order_id );
+			if ( ! $order || ! $order->needs_payment() ) {
+				continue; // Already paid, already cancelled, or not a real order - leave it alone.
+			}
+			self::cancel_order(
+				$order_id,
+				sprintf(
+					/* translators: %d: minutes an unpaid order was left pending before being auto-cancelled */
+					__( 'Automatically cancelled - left unpaid for over %d minutes.', 'tc-booking' ),
+					TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES
+				)
+			);
 		}
 	}
 

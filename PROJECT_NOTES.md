@@ -2182,6 +2182,76 @@ same way the original snippet does; switching gateways replaces the fee
 rather than stacking a second one; and reapplying the same gateway twice
 reports no change, which is exactly what prevents the JS reload loop.
 
+## Abandoned checkouts no longer permanently block a date (GitHub issue #78)
+
+"The order - and the date block - is created at checkout, before
+payment... unpaid 'Pending payment' orders never expire or get cleaned
+up, so a date can become permanently unbookable because of one abandoned
+checkout." Confirmed directly in `TC_Rest_Api::create_booking()`: a
+guide is picked and a real `tc_booking` post (status `publish`,
+`_tc_status = 'pending_payment'`) is created the moment the customer
+reaches checkout - necessarily before payment, since that's the only way
+to hand them a real WooCommerce order to pay for. That booking counts as
+a genuine conflict in `TC_Availability::guide_available_on()`'s
+booking-overlap check (part 2) the same as a confirmed one, and nothing
+in the plugin ever revisited it - there was no cron/scheduled-task
+infrastructure of any kind before this.
+
+**Fix reuses existing machinery rather than adding new cancellation
+logic.** `TC_Woocommerce::release_stale_pending_bookings()`, run every 10
+minutes via a new WP-Cron hook (`tc_booking_release_stale_pending`),
+finds `tc_booking` posts still `pending_payment` and older than
+`TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES` (20, a constant in
+`tc-booking.php` - the issue's own suggestion of "e.g. 10 minutes" was
+deliberately loosened, to avoid cancelling a customer still genuinely
+mid-payment on a slower gateway flow like iDEAL's redirect-and-back or
+3D Secure), then calls the ALREADY-EXISTING `cancel_order()` on each
+one's linked order (gained an optional `$note` param so the auto-sweep's
+cancellation reads differently in the order's own notes than an admin's
+manual one, otherwise unchanged). `cancel_order()` already flows through
+`woocommerce_order_status_changed` -> `sync_booking_from_order()` ->
+`_tc_status` becomes `'cancelled'`, which the booking-conflict query
+already excludes - so the date is released through the exact same path
+a manual cancellation from wp-admin already used, not a new one.
+
+**Safety guard against the one real risk here:** cancelling an order
+that was actually just paid, in the narrow window between this sweep's
+own query running and it getting to that specific order. Re-checks
+`$order->needs_payment()` immediately before cancelling, not just this
+plugin's own `_tc_status` meta (which could theoretically be a request
+or two stale) - skips silently if the order no longer needs payment,
+rather than trusting the query snapshot.
+
+**First cron job this plugin has ever needed**, so getting it scheduled
+follows the exact same two-path pattern `TC_Activator::maybe_upgrade()`
+already established for the DB migration: `register_activation_hook`
+schedules it for a fresh install, but this plugin self-updates from
+GitHub and never re-fires that hook on an already-active site - so
+`TC_Woocommerce::init()` also calls a `maybe_schedule_cleanup_cron()`
+guarded by `wp_next_scheduled()`, exactly mirroring how `maybe_upgrade()`
+itself is reached. A custom `tc_booking_ten_minutes` schedule is
+registered via the `cron_schedules` filter, since WordPress core only
+ships hourly and coarser. Unscheduled on deactivation (`TC_Activator::
+deactivate()`) so a deactivated plugin doesn't leave a permanently
+firing no-op event behind.
+
+Verified with a standalone PHP test (stubbed `get_posts()`/`wc_get_order()`)
+covering: a genuinely stale unpaid booking gets cancelled and its order
+status actually flips; a booking whose order was JUST paid is never
+touched, proving the safety guard actually gates on live order state and
+not the stale query snapshot; a booking with no linked order is skipped
+without erroring; and a sweep with several stale bookings handles each
+independently.
+
+## The guide's own booking email was missing the total (GitHub issue #79)
+
+Trivial once traced: `TC_Notifications::booking_context()` already
+resolves `$b['total']` (read by both the admin copy and the customer's
+own copy of the exact same confirmation email, in `send_confirmation()`),
+but the guide's own `$guide_rows` array never included it - just missed
+when that email was originally built. Added the same `Totaal` row the
+other two copies already have.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

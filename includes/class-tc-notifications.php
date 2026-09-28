@@ -70,7 +70,12 @@ class TC_Notifications {
 					array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
 					array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
 				),
-				$extras
+				$extras,
+				// GitHub issue #79 - the guide's own copy never included the
+				// order total, unlike the admin and customer copies just
+				// above/below, even though booking_context() already
+				// resolves it (used by both of those already).
+				array( array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ) )
 			);
 			$guide_body    = self::email_shell(
 				__( 'Nieuwe boeking toegewezen', 'tc-booking' ),
