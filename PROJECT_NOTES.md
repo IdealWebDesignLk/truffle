@@ -2428,6 +2428,74 @@ new slug with no unschedule call; a site still on the old v0.41.0
 and a site already on the new schedule makes neither call, confirming
 the guard against pointless timer resets actually works.
 
+## Two bugs in special-service dates: silently disappearing, and permanently stuck
+
+"Akersloot and Sint Maarten special events dates are getting disappear.
+maybe when saving another or with time. also i cant edit it its stuck
+with 2026-10-31 already has a booking and could not be removed as a
+special date." Two genuinely separate bugs, both in how a guide's
+special-service dates get saved, diagnosed by reading `save_guide_special_
+dates_changes()` and `admin/js/guide-calendars.js` side by side rather
+than guessing from the symptom alone.
+
+**Bug 1 - dates silently disappearing.** `save_guide_special_dates_
+changes()` treats whatever's posted in `tc_special_dates[SERVICE][LOCATION]
+[]` as that pair's *complete* new date list, replacing it outright - by
+design, this is how a checkbox-style calendar UI is meant to work (see
+that method's own docblock). But `admin/js/guide-calendars.js`'s special-
+date widgets are created *lazily*, only when their tab is actually
+clicked (`getSpecialWidget()`) - a pair whose tab the admin never opened
+in that editing session submitted no hidden inputs for it *at all*, which
+the save logic then read as "this pair now has zero dates," silently
+wiping whatever was there before. The regular-availability tabs don't
+have this problem because their own save path is delta-based (only
+posts what actually changed), not a full replace - this bug is specific
+to the special-dates full-replace design meeting the lazy-tab-creation
+optimization, a combination nobody had reason to think about until a
+guide covering two locations' worth of special dates ran into it.
+
+Fixed by eagerly creating a widget for every currently active pair right
+in `render()`, not just the one behind the visible tab - cheap to do
+(unlike the availability widgets, a special-date widget never needs a
+fetch, it just reads from data already sent down with the page), so
+every pair's hidden inputs are now always present regardless of which
+tab was ever actually opened.
+
+**Bug 2 - a wrong date getting permanently stuck.** Removing a special
+date is deliberately refused if it "already has a booking" - protecting
+a real, already-paid booking from becoming unreachable (see that
+docblock's own "can't un-offer an already-booked date" reasoning, shared
+with the regular calendar). But the check used for this,
+`guide_has_booking_on()`, asks whether the guide has *any* real booking
+on that date at all, regardless of which service - correct for the
+regular calendar (a day off is genuinely global to the guide), wrong
+here. A guide's ordinary, unrelated booking (e.g. a Solo Ceremony)
+landing on the same calendar date as an incorrect special-date entry
+made that entry permanently un-removable, purely by date coincidence -
+exactly "2026-10-31 already has a booking and could not be removed,"
+reported for a date that had nothing to do with the special service
+being edited.
+
+New `guide_has_special_booking_on( $guide_id, $service_id, $date )`
+checks specifically for a booking of *that* service, by this guide, on
+this date - the actual thing a removal could orphan. Used in both places
+that had the same overly-broad check: `save_guide_special_dates_changes()`
+(wp-admin) and `guide_save_special_dates_bulk()` (the guide's own
+front-end dashboard - same bug, same fix, found by checking the
+sibling code path rather than assuming it was admin-only).
+
+Verified with three standalone tests: `guide_has_special_booking_on()`
+in isolation (an unrelated booking doesn't block; a booking for the
+actual special service still does; a different guide's booking never
+leaks in); a full integration test of `save_guide_special_dates_changes()`
+confirming a date with only an unrelated booking now actually gets
+removed with no error, while one with a genuine booking for that special
+service still correctly stays protected; and a browser harness for the
+JS fix, confirming all five dates across two different special-service/
+location pairs appear as hidden inputs on the very first render - before
+ever clicking into either special-date tab - which is exactly the
+scenario that silently dropped them before this fix.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

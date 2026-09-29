@@ -990,7 +990,7 @@ class TC_Rest_Api {
 				continue;
 			}
 
-			if ( ! $offered && TC_Availability::guide_has_booking_on( $guide->ID, $date ) ) {
+			if ( ! $offered && TC_Availability::guide_has_special_booking_on( $guide->ID, $service_id, $date ) ) {
 				$results[] = $result + array( 'success' => false, 'message' => __( 'Er is al een boeking op deze datum en kan niet worden verwijderd.', 'tc-booking' ) );
 				continue;
 			}

@@ -389,6 +389,24 @@
 	function render() {
 		var availLocations = activeAvailabilityLocations();
 		var pairs          = activeSpecialPairs();
+
+		// GitHub bug report - "special events dates are getting
+		// disappear." getSpecialWidget() used to only ever get called for
+		// whichever tab's panel was actually being rendered - a pair whose
+		// tab the admin never clicked into this session never got a
+		// widget, so specialHiddenInputs() below never emitted anything
+		// for it, and save_guide_special_dates_changes() (which treats
+		// whatever got posted as that pair's COMPLETE new date list) read
+		// "nothing posted" as "now empty," silently wiping it on Update.
+		// Eagerly creating every currently active pair's widget here -
+		// cheap, unlike the availability widgets below: this never needs a
+		// fetch, just reads already-loaded initialByPair - guarantees
+		// every pair's hidden inputs are always present regardless of
+		// which tab was ever actually opened.
+		pairs.forEach( function ( p ) {
+			getSpecialWidget( p.service.id, p.location.id );
+		} );
+
 		var tabs = availLocations.map( function ( l ) {
 			return { key: avKey( l.id ), label: 'Beschikbaarheid — ' + l.name, location: l };
 		} ).concat(

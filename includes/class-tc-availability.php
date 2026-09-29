@@ -781,6 +781,45 @@ class TC_Availability {
 	}
 
 	/**
+	 * GitHub bug report - "2026-10-31 already has a booking and could not
+	 * be removed as a special date," reported for dates that turned out to
+	 * have no real connection to the special service being edited at all.
+	 * Both save_guide_special_dates_changes() (wp-admin) and
+	 * guide_save_special_dates_bulk() (the guide's own dashboard) were
+	 * using guide_has_booking_on() above - ANY real booking for this
+	 * guide on this date, regardless of which service - to decide whether
+	 * removing a special date is allowed. That's correct for the regular
+	 * calendar (a day off is genuinely global to the guide), but wrong
+	 * here: a guide's ordinary booking on, say, a Solo Ceremony that
+	 * happens to land on the same calendar date as an unrelated, incorrect
+	 * special-date entry made it impossible to ever remove that special
+	 * date, purely by coincidence of sharing a date with something else
+	 * entirely. This checks specifically for a booking of THIS service, by
+	 * this guide, on this date - the actual thing removing a (service,
+	 * date) special-date entry could orphan - so an unrelated booking on
+	 * the same date no longer blocks the removal.
+	 */
+	public static function guide_has_special_booking_on( $guide_id, $service_id, $date ) {
+		global $wpdb;
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm_guide ON pm_guide.post_id = p.ID AND pm_guide.meta_key = '_tc_guide_id'
+				 INNER JOIN {$wpdb->postmeta} pm_date ON pm_date.post_id = p.ID AND pm_date.meta_key = '_tc_date'
+				 INNER JOIN {$wpdb->postmeta} pm_service ON pm_service.post_id = p.ID AND pm_service.meta_key = '_tc_service_id'
+				 INNER JOIN {$wpdb->postmeta} pm_status ON pm_status.post_id = p.ID AND pm_status.meta_key = '_tc_status'
+				 WHERE p.post_type = %s AND p.post_status = 'publish' AND pm_guide.meta_value = %d
+				   AND pm_date.meta_value = %s AND pm_service.meta_value = %d AND pm_status.meta_value != 'cancelled'",
+				TC_CPT::BOOKING,
+				$guide_id,
+				$date,
+				$service_id
+			)
+		);
+		return $count > 0;
+	}
+
+	/**
 	 * $location_id is always a real location going forward - only rows set
 	 * before this column existed are ever 0 (see the schema comment in
 	 * class-tc-activator.php), never something a live write produces.

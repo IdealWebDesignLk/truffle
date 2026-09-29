@@ -711,7 +711,7 @@ class TC_Meta_Boxes {
 			if ( isset( $new_keys[ $key ] ) ) {
 				continue; // Still present, nothing to do.
 			}
-			if ( TC_Availability::guide_has_booking_on( $post_id, $old['date'] ) ) {
+			if ( TC_Availability::guide_has_special_booking_on( $post_id, $old['service_id'], $old['date'] ) ) {
 				$rows[]     = $old;
 				/* translators: %s: date (YYYY-MM-DD) */
 				$errors[]   = sprintf( __( '%s already has a booking and could not be removed as a special date.', 'tc-booking' ), $old['date'] );
