@@ -2496,6 +2496,54 @@ location pairs appear as hidden inputs on the very first render - before
 ever clicking into either special-date tab - which is exactly the
 scenario that silently dropped them before this fix.
 
+## A regular-calendar day off was also hiding an opted-into special service
+
+"When from normal service calendar a date is marked as not available...
+we go to special calendar and marking oct 24 as available for that
+service but since normal calender its marked as day off it dose not
+show special service as well." A real, clean bug in `guide_available_on()`'s
+own control flow, not a data problem - the explicit-block check against
+the regular `wp_tc_guide_availability` table (part 1) ran *unconditionally*,
+before the function ever branched on whether the service being checked
+was special (part 1b). A guide marking themselves off on their normal
+calendar for reasons entirely unrelated to a special ceremony they'd
+separately, explicitly opted into offering that exact same date - the
+opt-in `guide_offers_special_on()` already confirms - still hit that
+unconditional check first and got blocked regardless.
+
+**Fix:** moved the entire regular-calendar query and blocked-row check
+(plus the horizon-cutoff check that depends on it - both only ever
+mattered for regular services in the first place) inside the `else`
+(non-special) branch, so a special service never reaches it at all. Once
+`guide_offers_special_on()` confirms the opt-in, that's the *entire*
+answer for a special service - the regular calendar's blocked/available
+rows are irrelevant to it, by design, the same way the special-dates
+system already worked in every other respect. A nice side effect: this
+also means a special-service availability check no longer queries the
+regular-availability table at all, one fewer query than before for that
+path.
+
+**What deliberately didn't change:** the *reverse* rule - opting into a
+special date closes the guide's regular calendar that same day
+(`guide_has_special_date_on()`) - and the booking-conflict overlap check
+(part 2, still fully unconditional/global across both special and
+regular services) are both untouched. A real booking, or a genuine
+special-day commitment, still means the guide is committed somewhere and
+can't also be available elsewhere that day - only the *regular calendar's
+own blocked-row check* needed to stop reaching special services, nothing
+else about the "one guide, one place" model changed.
+
+Verified with a standalone PHP test covering: the exact reported
+scenario (regular day off + opted-into special service on the same date
+-> special now correctly shows available, and the regular-availability
+table isn't even queried for that check anymore); the same date for the
+regular service itself still correctly blocked; the reverse rule (special
+opt-in still closes the regular calendar) still works; a special service
+with no opt-in at all still closes regardless of the regular calendar's
+state; the unaffected baseline case; and the horizon-cutoff logic
+(0.39.0/0.39.2) still applying correctly to regular services only, never
+reaching a special one, after the restructuring.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

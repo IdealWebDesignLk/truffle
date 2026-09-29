@@ -193,10 +193,18 @@ class TC_Availability {
 	}
 
 	/**
-	 * True if the guide has no explicit 'blocked' override, and no existing
-	 * booking (of any service) whose span overlaps this service's span
-	 * starting on $date_str. Multi-day services (duration_days > 1) block
-	 * every day in their span, not just the start date.
+	 * For a regular service: true if the guide has no explicit 'blocked'
+	 * override on their normal calendar, and no existing booking (of any
+	 * service) whose span overlaps this service's span starting on
+	 * $date_str. For a special service: true only if the guide has
+	 * explicitly opted into offering it on this date - the regular
+	 * calendar's own blocked/available rows never apply to a special
+	 * service at all (GitHub bug report: marking a date off on the normal
+	 * calendar was also hiding a special service the guide had separately
+	 * opted INTO offering that same date - see the is_special branch
+	 * below for why these two are deliberately independent). Multi-day
+	 * services (duration_days > 1) block every day in their span, not
+	 * just the start date.
 	 *
 	 * GitHub follow-up - $location_id now also scopes the explicit
 	 * guide-set blocks below (a guide covering two locations can be
@@ -213,53 +221,6 @@ class TC_Availability {
 		$duration = max( 1, (int) $service['duration_days'] );
 		$start    = new DateTime( $date_str );
 		$span_end = ( clone $start )->modify( '+' . ( $duration - 1 ) . ' days' );
-
-		// 1. Explicit guide-set blocks. A row for any day within the span with
-		// status 'blocked' and no overriding 'available' row on that same day
-		// makes the whole span unavailable for this guide, at this location -
-		// location_id 0 is a legacy row set before that column existed (see
-		// class-tc-activator.php's schema comment), still treated as
-		// applying everywhere so it keeps blocking what it always did.
-		//
-		// A guide can end up with BOTH a legacy location_id = 0 row and a
-		// newer location-specific row for the same date (see the GitHub bug
-		// report and fix in fetch_guide_availability() above) - e.g. an old
-		// 'blocked' row from before per-location availability existed, and
-		// a later, deliberate 'available' row set for this exact location
-		// since. GitHub follow-up: this method originally short-circuited
-		// to false the moment it saw ANY 'blocked' row, regardless of
-		// whether a later, more specific row superseded it - so a guide
-		// correctly shown "available" at one location in wp-admin (after
-		// the fetch_guide_availability() fix) could still be wrongly
-		// treated as blocked there by the actual booking engine, since
-		// this loop never got as far as the row that overrode it. Now
-		// resolves every date to ONE status first - ORDER BY location_id
-		// ASC plus last-write-wins here mirrors fetch_guide_availability()
-		// exactly, so the row that display already prefers is the same
-		// row this decision is based on - and only THEN checks the
-		// resolved status per day below, instead of reacting to raw rows
-		// as they stream in.
-		$table = $wpdb->prefix . 'tc_guide_availability';
-		$rows  = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT availability_date, status FROM {$table}
-				 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s
-				 ORDER BY location_id ASC",
-				$guide_id,
-				$location_id,
-				$start->format( 'Y-m-d' ),
-				$span_end->format( 'Y-m-d' )
-			)
-		);
-		$status_by_date = array();
-		foreach ( $rows as $row ) {
-			$status_by_date[ $row->availability_date ] = $row->status;
-		}
-		foreach ( $status_by_date as $status ) {
-			if ( 'blocked' === $status ) {
-				return false;
-			}
-		}
 
 		// 1b. Special services (GitHub issue #71) - a guide is only
 		// "available" for a special service on dates they've explicitly
@@ -279,9 +240,63 @@ class TC_Availability {
 			if ( ! self::guide_offers_special_on( $guide_id, $service['id'], $location_id, $date_str ) ) {
 				return false;
 			}
+			// GitHub bug report - "normal calender its marked as day off
+			// it does not show special service as well." Explicit
+			// guide-set blocks on the REGULAR calendar (below, part 1)
+			// deliberately never reach a special service - a guide can
+			// mark themselves off on their normal calendar for reasons
+			// that have nothing to do with a special ceremony they've
+			// separately, explicitly opted into offering that exact same
+			// date (guide_offers_special_on() above already confirmed
+			// that opt-in). Special availability is governed entirely by
+			// that opt-in, on purpose, never by the regular day-off
+			// calendar - this branch returns here, before part 1 ever
+			// runs, instead of falling through into a check that was
+			// never meant to apply to it.
 		} else {
 			if ( self::guide_has_special_date_on( $guide_id, $date_str ) ) {
 				return false;
+			}
+
+			// 1. Explicit guide-set blocks - regular services only (see
+			// the note on the is_special branch above for why a special
+			// service never reaches this). A row for any day within the
+			// span with status 'blocked' and no overriding 'available'
+			// row on that same day makes the whole span unavailable for
+			// this guide, at this location - location_id 0 is a legacy
+			// row set before that column existed (see class-tc-
+			// activator.php's schema comment), still treated as applying
+			// everywhere so it keeps blocking what it always did.
+			//
+			// A guide can end up with BOTH a legacy location_id = 0 row
+			// and a newer location-specific row for the same date (see
+			// the GitHub bug report and fix in fetch_guide_availability()
+			// above) - e.g. an old 'blocked' row from before per-location
+			// availability existed, and a later, deliberate 'available'
+			// row set for this exact location since. ORDER BY location_id
+			// ASC plus last-write-wins here mirrors
+			// fetch_guide_availability() exactly, so the row that display
+			// already prefers is the same row this decision is based on.
+			$table = $wpdb->prefix . 'tc_guide_availability';
+			$rows  = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT availability_date, status FROM {$table}
+					 WHERE guide_id = %d AND ( location_id = %d OR location_id = 0 ) AND availability_date BETWEEN %s AND %s
+					 ORDER BY location_id ASC",
+					$guide_id,
+					$location_id,
+					$start->format( 'Y-m-d' ),
+					$span_end->format( 'Y-m-d' )
+				)
+			);
+			$status_by_date = array();
+			foreach ( $rows as $row ) {
+				$status_by_date[ $row->availability_date ] = $row->status;
+			}
+			foreach ( $status_by_date as $status ) {
+				if ( 'blocked' === $status ) {
+					return false;
+				}
 			}
 
 			// GitHub follow-up - "close all dates after 2027 jan 01, if
