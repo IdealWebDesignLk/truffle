@@ -61,27 +61,11 @@ class TC_Notifications {
 
 		if ( $b['guide_email'] ) {
 			$guide_subject = sprintf( __( 'Nieuwe boeking toegewezen: %s op %s', 'tc-booking' ), $b['service_name'], self::format_date( $b['date'] ) );
-			$guide_rows    = array_merge(
-				array(
-					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
-					array( __( 'Klant', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
-					array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
-					array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' ),
-				),
-				$extras,
-				// GitHub issue #79 - the guide's own copy never included the
-				// order total, unlike the admin and customer copies just
-				// above/below, even though booking_context() already
-				// resolves it (used by both of those already).
-				array( array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ) )
-			);
 			$guide_body    = self::email_shell(
 				__( 'Nieuwe boeking toegewezen', 'tc-booking' ),
 				self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['guide_name'] ) ) .
-				self::email_p( __( 'Er is een nieuwe boeking aan je toegewezen.', 'tc-booking' ) ) .
-				self::email_rows( $guide_rows )
+				self::email_p( __( 'Er is een nieuwe boeking aan je toegewezen. Hieronder vind je alle details van de bestelling.', 'tc-booking' ) ) .
+				self::guide_booking_html( $b, $booking_id )
 			);
 			self::send_html_mail( $b['guide_email'], $guide_subject, $guide_body );
 		}
@@ -103,13 +87,19 @@ class TC_Notifications {
 			self::email_p( sprintf( __( 'Hoi %s,', 'tc-booking' ), $b['first_name'] ) ) .
 			self::email_p( __( 'Je boeking is bevestigd. Hieronder vind je de details.', 'tc-booking' ) ) .
 			self::email_rows(
-				array(
-					array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
-					array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
-					array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
-					array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
-					array( __( 'Extras', 'tc-booking' ), $extras ),
-					array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ),
+				array_merge(
+					array(
+						array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] ),
+						array( __( 'Locatie', 'tc-booking' ), $b['location_name'] ),
+						array( __( 'Gids', 'tc-booking' ), $b['guide_name'] ),
+						array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) ),
+					),
+					// $extras is already a list of [label, value] rows (see
+					// extras_rows()) - it used to be passed here as a single
+					// value, which email_rows() then esc_html()'d as the
+					// literal word "Array".
+					$extras,
+					array( array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) ) )
 				)
 			) .
 			self::email_p( __( 'We kijken ernaar uit je te zien.', 'tc-booking' ) )
@@ -235,6 +225,92 @@ class TC_Notifications {
 		}
 		$user = get_userdata( $user_id );
 		return $user ? $user->user_email : '';
+	}
+
+	/**
+	 * The guide's copy of a new booking - everything an order confirmation
+	 * carries, not the short summary it used to be ("in the guides email
+	 * about new booking seems they are not getting full order details like
+	 * order confirmation... full details about booking with extra options
+	 * booked as well"). Sections: the booking itself, the customer's
+	 * contact details, any additional guests (with their own contact
+	 * details), the extras booked (with quantities), and a price breakdown
+	 * read from the actual WooCommerce order - so a coupon discount or a
+	 * payment-gateway surcharge applied at the pay page shows up here the
+	 * same as on the customer's own invoice, rather than the booking's
+	 * original price snapshot (_tc_total) silently disagreeing with what
+	 * was actually paid. Falls back to that snapshot only when there's no
+	 * linked order at all.
+	 */
+	private static function guide_booking_html( $b, $booking_id ) {
+		$order_id = (int) get_post_meta( $booking_id, '_tc_wc_order_id', true );
+		$order    = ( $order_id && function_exists( 'wc_get_order' ) ) ? wc_get_order( $order_id ) : null;
+
+		$booking_rows = array();
+		if ( $order ) {
+			$booking_rows[] = array( __( 'Bestelnummer', 'tc-booking' ), '#' . $order->get_order_number() );
+		}
+		$booking_rows[] = array( __( 'Ceremonie', 'tc-booking' ), $b['service_name'] );
+		$booking_rows[] = array( __( 'Locatie', 'tc-booking' ), $b['location_name'] );
+		$booking_rows[] = array( __( 'Datum', 'tc-booking' ), self::format_date( $b['date'], $b['start_time'] ) );
+		$booking_rows[] = array( __( 'Groepsgrootte', 'tc-booking' ), $b['party_size'] > 1 ? $b['party_size'] : '' );
+
+		$customer_rows = array(
+			array( __( 'Naam', 'tc-booking' ), trim( $b['first_name'] . ' ' . $b['last_name'] ) ),
+			array( __( 'E-mail', 'tc-booking' ), $b['email'] ),
+			array( __( 'Telefoon', 'tc-booking' ), $b['phone'] ),
+		);
+
+		$guest_rows = array();
+		if ( is_array( $b['guests'] ) ) {
+			$label = __( 'Extra gasten', 'tc-booking' );
+			foreach ( $b['guests'] as $guest ) {
+				$contact = array_filter( array( $guest['email'] ?? '', $guest['phone'] ?? '' ) );
+				$line    = trim( ( $guest['name'] ?? '' ) . ( $contact ? ' (' . implode( ', ', $contact ) . ')' : '' ) );
+				if ( '' === $line ) {
+					continue;
+				}
+				$guest_rows[] = array( $label, $line );
+				$label        = ''; // Only the first row carries the label, same as extras_rows().
+			}
+		}
+
+		$price_rows = array();
+		if ( $order ) {
+			foreach ( $order->get_items() as $item ) {
+				$price_rows[] = array( $item->get_name(), self::format_price( $item->get_subtotal() ) );
+			}
+			$discount = (float) $order->get_discount_total();
+			if ( $discount > 0 ) {
+				$codes        = implode( ', ', array_map( 'strtoupper', $order->get_coupon_codes() ) );
+				$price_rows[] = array(
+					$codes ? sprintf( __( 'Korting (%s)', 'tc-booking' ), $codes ) : __( 'Korting', 'tc-booking' ),
+					'-' . self::format_price( $discount ),
+				);
+			}
+			foreach ( $order->get_items( 'fee' ) as $fee ) {
+				$price_rows[] = array( $fee->get_name(), self::format_price( $fee->get_total() ) );
+			}
+			$price_rows[] = array( __( 'Totaal', 'tc-booking' ), self::format_price( $order->get_total() ) );
+			$price_rows[] = array( __( 'Betaalmethode', 'tc-booking' ), $order->get_payment_method_title() );
+			$paid         = $order->get_date_paid();
+			$price_rows[] = array( __( 'Betaald op', 'tc-booking' ), $paid ? date_i18n( get_option( 'date_format' ), $paid->getTimestamp() ) : '' );
+		} else {
+			$price_rows[] = array( __( 'Totaal', 'tc-booking' ), self::format_price( $b['total'] ) );
+		}
+
+		$html  = self::email_heading( __( 'Boeking', 'tc-booking' ) ) . self::email_rows( $booking_rows );
+		$html .= self::email_heading( __( 'Klant', 'tc-booking' ) ) . self::email_rows( array_merge( $customer_rows, $guest_rows ) );
+		$extras = self::extras_rows( $b['extras'] );
+		if ( $extras ) {
+			$html .= self::email_heading( __( 'Extra opties', 'tc-booking' ) ) . self::email_rows( $extras );
+		}
+		$html .= self::email_heading( __( 'Prijsoverzicht', 'tc-booking' ) ) . self::email_rows( $price_rows );
+		return $html;
+	}
+
+	private static function email_heading( $text ) {
+		return '<h2 style="margin:24px 0 8px;font-size:16px;color:#231F2E;">' . esc_html( $text ) . '</h2>';
 	}
 
 	/**

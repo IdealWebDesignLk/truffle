@@ -2544,6 +2544,43 @@ state; the unaffected baseline case; and the horizon-cutoff logic
 (0.39.0/0.39.2) still applying correctly to regular services only, never
 reaching a special one, after the restructuring.
 
+## The guide's new-booking email now carries the full order
+
+"In the guides email about new booking seems they are not getting full
+order details like order confirmation. We need to send full details
+about booking with extra options booked as well to guide." The guide's
+copy of `send_confirmation()` was a short summary (service, location,
+date, customer name + phone, group size, extras, total) - missing the
+customer's email, the additional guests entirely, any sense of what was
+actually paid, and the order number.
+
+`TC_Notifications::guide_booking_html()` now builds it in four sections -
+Boeking (order number, ceremony, location, date/time, group size), Klant
+(name, email, phone, plus every additional guest with their own
+email/phone), Extra opties (each extra with its quantity), and
+Prijsoverzicht. **The price breakdown is read from the linked WooCommerce
+order, not the booking's `_tc_total` snapshot**: since the pay-page
+coupon (0.43.0) and payment-gateway surcharge (0.40.0), what's actually
+paid can differ from that snapshot, and a guide email quoting a total
+that disagrees with the customer's own invoice would be worse than no
+total at all. Lines use each item's *subtotal* with the discount shown
+as its own negative row - using the already-discounted item totals plus a
+discount row would double-count it visually. Falls back to the snapshot
+only when no order is linked at all.
+
+Also fixed in passing: the customer's confirmation email passed the
+`extras_rows()` *list* as a single row value, which `email_rows()`
+escaped as the literal word "Array" - the extras a customer booked never
+actually showed up in their own confirmation. Spliced in as rows now,
+same as the admin and guide copies.
+
+Verified by running the real `send_confirmation()` against stubbed
+WP/WooCommerce and capturing every email sent: guests with and without
+contact details, extras with quantities, the coupon and fee lines
+appearing in the breakdown with the total reflecting both, the no-order
+fallback, and the customer email no longer containing "Array". Also
+rendered the actual HTML in a browser to check the layout.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.44.1
+Stable tag: 0.45.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,16 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.45.0 =
+* The guide's new-booking email now carries the full order, like an
+  order confirmation: order number, the customer's name/email/phone,
+  group size, every additional guest with their own contact details,
+  the extra options booked (with quantities), and a price breakdown
+  read from the actual order - service, extras, any coupon discount or
+  payment surcharge, the total, payment method and payment date.
+* Fixed the customer's confirmation email printing the word "Array"
+  instead of the list of extras they booked.
 
 = 0.44.1 =
 * Fixed a bug where marking a date as a day off on a guide's normal
