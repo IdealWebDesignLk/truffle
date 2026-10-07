@@ -848,8 +848,13 @@ class TC_Woocommerce {
 				'post_status'    => 'publish',
 				'numberposts'    => -1,
 				'date_query'     => array( array( 'column' => 'post_date_gmt', 'before' => $cutoff ) ),
+				// 'payment_failed' too (a declined/abandoned payment attempt
+				// flips the WooCommerce order to "failed", which
+				// sync_booking_from_order() mirrors as payment_failed) - it
+				// used to be left out, so one failed attempt held its date
+				// forever: availability only releases a date on 'cancelled'.
 				'meta_query'     => array(
-					array( 'key' => '_tc_status', 'value' => 'pending_payment' ),
+					array( 'key' => '_tc_status', 'value' => array( 'pending_payment', 'payment_failed' ), 'compare' => 'IN' ),
 				),
 			)
 		);
@@ -871,6 +876,16 @@ class TC_Woocommerce {
 					TC_BOOKING_PENDING_PAYMENT_TIMEOUT_MINUTES
 				)
 			);
+
+			// The customer started a booking and never finished paying - a
+			// friendly "can we help?" email, only for this automatic path
+			// (an admin cancelling by hand sends its own, different
+			// cancellation email). Only if the order really did end up
+			// cancelled, and never twice for the same booking.
+			if ( 'cancelled' === $order->get_status() && ! get_post_meta( $booking->ID, '_tc_abandoned_email_sent', true ) ) {
+				update_post_meta( $booking->ID, '_tc_abandoned_email_sent', time() );
+				TC_Notifications::send_abandoned_checkout( $booking->ID );
+			}
 		}
 	}
 

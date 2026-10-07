@@ -107,6 +107,39 @@ class TC_Notifications {
 		self::send_html_mail( $b['email'], $subject, $body );
 	}
 
+	/**
+	 * Sent to the customer when their unpaid booking is auto-cancelled by
+	 * TC_Woocommerce::release_stale_pending_bookings() - they started a
+	 * booking but never finished paying, so this is a "can we help?"
+	 * nudge rather than a cancellation notice. Replies go to the
+	 * business's own inbox (Reply-To), not the no-reply sender address
+	 * WordPress mails from. Written in the customer's own language like
+	 * the other customer emails (see send_confirmation()'s WPML note).
+	 */
+	public static function send_abandoned_checkout( $booking_id ) {
+		$b = self::booking_context( $booking_id );
+		if ( ! $b || ! is_email( $b['email'] ) ) {
+			return;
+		}
+
+		TC_WPML::maybe_switch_language( $b['lang'] );
+
+		$subject  = __( 'Kunnen we je helpen met je boeking?', 'tc-booking' );
+		$greeting = $b['first_name'] ? sprintf( __( 'Hi %s,', 'tc-booking' ), $b['first_name'] ) : __( 'Hi,', 'tc-booking' );
+		$body     = self::email_shell(
+			$subject,
+			self::email_p( $greeting ) .
+			self::email_p( __( 'We zagen dat je begonnen bent met het boeken van een truffelceremonie, maar je boeking nog niet hebt afgerond.', 'tc-booking' ) ) .
+			self::email_p( __( 'Twijfel je nog of kunnen we ergens bij helpen? We kunnen bijvoorbeeld de gekozen datum tijdelijk voor je vasthouden. Laat gerust even weten wat voor jou prettig is. Je kunt simpelweg op deze mail antwoorden.', 'tc-booking' ) ) .
+			'<p style="margin:0 0 16px;font-size:14.5px;line-height:1.6;color:#231F2E;">' .
+				esc_html__( 'Warme groet,', 'tc-booking' ) . '<br>' . esc_html__( 'Team truffelceremonie.com', 'tc-booking' ) .
+			'</p>'
+		);
+
+		$reply_to = apply_filters( 'tc_booking_reply_to_email', 'info@truffelceremonie.com' );
+		self::send_html_mail( $b['email'], $subject, $body, array( 'Reply-To: ' . $reply_to ) );
+	}
+
 	public static function send_cancellation( $booking_id ) {
 		$b      = self::booking_context( $booking_id );
 		if ( ! $b ) {
@@ -426,12 +459,12 @@ class TC_Notifications {
 	 * not silently start receiving HTML because this class changed a
 	 * global filter and forgot to change it back.
 	 */
-	private static function send_html_mail( $to, $subject, $html_body ) {
+	private static function send_html_mail( $to, $subject, $html_body, $headers = array() ) {
 		$set_html = function () {
 			return 'text/html';
 		};
 		add_filter( 'wp_mail_content_type', $set_html );
-		wp_mail( $to, $subject, $html_body );
+		wp_mail( $to, $subject, $html_body, $headers );
 		remove_filter( 'wp_mail_content_type', $set_html );
 	}
 

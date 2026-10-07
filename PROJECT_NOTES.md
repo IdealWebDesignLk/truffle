@@ -2581,6 +2581,50 @@ appearing in the breakdown with the total reflecting both, the no-order
 fallback, and the customer email no longer containing "Array". Also
 rendered the actual HTML in a browser to check the layout.
 
+## "Can we help?" email for auto-cancelled bookings, and failed payments now released too
+
+Two related changes to the abandoned-checkout sweep
+(`TC_Woocommerce::release_stale_pending_bookings()`, 0.41.0/0.43.1).
+
+**Failed-payment gap.** Reviewing the sweep against the order lifecycle
+turned up that it only matched `_tc_status = 'pending_payment'`. A
+payment attempt that fails flips the WooCommerce order to `failed`,
+which `sync_booking_from_order()` mirrors as `payment_failed` - and
+availability's booking-conflict check only releases a date on
+`'cancelled'`. So one declined card held its date forever and the sweep
+never looked at it (issue #78 by a different route). The query now
+matches both statuses; `needs_payment()` is true for `failed` orders, so
+the same paid-in-the-meantime guard still protects a retry that
+succeeded. Age is still measured from booking creation, so a customer
+who fails once and retries after the 10-minute mark finds the order
+cancelled - consistent with the rule for never-attempted orders, flagged
+here because it's a judgement call.
+
+**The email.** `TC_Notifications::send_abandoned_checkout()` - Dutch
+source text (the WPML default; translated per customer via the
+`_tc_customer_lang` captured at booking time, same as the other customer
+emails), greets by first name or a plain "Hi," if there isn't one, and
+sets `Reply-To: info@truffelceremonie.com` (filterable via
+`tc_booking_reply_to_email`) because WordPress mails from a no-reply
+address and the email explicitly invites a reply. `send_html_mail()`
+gained an optional headers argument for this.
+
+Sent only from the automatic sweep, not from `cancel_order()` itself - an
+admin cancelling by hand has its own, different cancellation email and
+this "you didn't finish" wording would be wrong there. Guarded to once
+per booking (`_tc_abandoned_email_sent` meta), only when the order really
+ended up `cancelled`, and skipped if the stored address isn't valid (the
+order is still cancelled either way). The order note and this email use
+the same trigger, so the date being released and the customer being told
+can't drift apart.
+
+Verified by running the real sweep and the real email code together
+against stubbed WP/WooCommerce: cancel + exactly one email with the
+requested subject/wording and Reply-To; no-first-name greeting; a
+just-paid order untouched and not emailed; no second email for the same
+booking; an invalid address still cancelling without a send; and the
+sweep query covering both statuses.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
