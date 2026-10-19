@@ -97,7 +97,7 @@ class TC_Booking_Shortcode {
 					// Service step
 					/* translators: %s: location name */
 					'locationLabel'           => __( 'Locatie: %s', 'tc-booking' ),
-					'chooseServiceSub'        => __( 'Kies een dienst. Hieronder verschijnen de beschikbare data.', 'tc-booking' ),
+					'chooseServiceSub'        => __( 'Kies een dienst. Hieronder verschijnen de beschikbare data. De individuele, duo- en groepsceremonies vinden doorgaans plaats tussen 09:00 en 18:00 uur. De ceremonies met overnachting wijken hiervan af.', 'tc-booking' ),
 					'chooseServiceLabel'      => __( 'Kies een ceremonie', 'tc-booking' ),
 					'noServicesAvailable'     => __( 'Er zijn op dit moment geen ceremonies beschikbaar op deze locatie.', 'tc-booking' ),
 					/* translators: %s: service/ceremony name */
