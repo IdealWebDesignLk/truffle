@@ -540,6 +540,22 @@ class TC_Rest_Api {
 			return new WP_Error( 'tc_invalid_service', __( 'Onbekende dienst.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
 
+		// Short-notice rule (TC_BOOKING_BLOCKED_DAYS_AHEAD) - the grid already
+		// shows these dates closed, but the booking request itself can be
+		// sent directly, so it's enforced here too.
+		$earliest = TC_Availability::earliest_bookable_date();
+		if ( $date < $earliest ) {
+			return new WP_Error(
+				'tc_too_soon',
+				sprintf(
+					/* translators: %s: first date that can be booked, formatted */
+					__( 'Boeken kan niet op zo korte termijn. De eerstvolgende beschikbare datum is %s.', 'tc-booking' ),
+					date_i18n( get_option( 'date_format' ), strtotime( $earliest ) )
+				),
+				array( 'status' => 409 )
+			);
+		}
+
 		// Re-validate availability server-side - the front-end grid can be
 		// stale by the time checkout happens, this check cannot be skipped.
 		if ( ! TC_Availability::is_bookable( $service_id, $location_id, $date ) ) {

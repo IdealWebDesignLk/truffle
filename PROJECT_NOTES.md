@@ -2625,6 +2625,39 @@ just-paid order untouched and not emailed; no second email for the same
 booking; an invalid address still cancelling without a send; and the
 sweep query covering both statuses.
 
+## Short-notice rule: no customer bookings for the next two days
+
+"Can you program the booking tool that no booking can be made for the
+next two days? Today it is Tuesday... you cannot book for Wednesday or
+Thursday. Friday will be the first available date." `TC_BOOKING_BLOCKED_
+DAYS_AHEAD` (tc-booking.php, 2) full days after today are closed, and
+today itself too whenever it's above 0 - the example only works that way
+(before this, today *was* bookable). 0 switches it off. Also filterable
+(`tc_booking_blocked_days_ahead`). "An option" is a constant for now, like
+the horizon cutoff and pending-payment timeout - there's still no
+settings screen; one is the obvious next step if it needs changing often
+without a code edit.
+
+`TC_Availability::earliest_bookable_date()` computes the first open date
+in Amsterdam time (same reasoning as `nlToday()` client-side: the business
+only operates in the Netherlands, so the server's or visitor's timezone
+mustn't shift which day counts as "today"). **Enforced in two places, on
+purpose:** `get_grid()` returns those dates as `off`, which is all the
+booking widget needs - both the normal calendar and the special-service
+overlay read the same endpoint, so no front-end change - and
+`TC_Rest_Api::create_booking()` rejects them with a clear 409 message and
+the first available date, since a booking request can be sent without the
+calendar. **Deliberately not in `is_bookable()`:** the admin screens
+(manual booking, rescheduling) call it too, and staff must be able to take
+or move a short-notice booking by hand. Existing bookings, guide
+calendars and guide dashboards are untouched.
+
+Verified against the real `get_grid()` with a guide who's free every day:
+today, +1 and +2 closed, +3 and later open; the rule off reopens today;
+negative or zero values never open past dates; plus the Tuesday-to-Friday
+example worked out explicitly. Tests compute relative to the real
+"today", so they pass on any date.
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just

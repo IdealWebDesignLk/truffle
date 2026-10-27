@@ -37,12 +37,17 @@ class TC_Availability {
 		$guide_ids = self::get_guides_for( $location_id, $service_id );
 		$grid      = array();
 
-		$cursor = new DateTime( $start_date );
-		$end    = new DateTime( $end_date );
+		$cursor   = new DateTime( $start_date );
+		$end      = new DateTime( $end_date );
+		$earliest = self::earliest_bookable_date();
 
 		while ( $cursor <= $end ) {
-			$date_str      = $cursor->format( 'Y-m-d' );
-			$status_remain = self::get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id );
+			$date_str = $cursor->format( 'Y-m-d' );
+			// Inside the short-notice window (see earliest_bookable_date()):
+			// shown as closed to customers, whatever the guides' calendars say.
+			$status_remain = $date_str < $earliest
+				? array( 'status' => 'off', 'remaining' => null )
+				: self::get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id );
 			$grid[]        = array(
 				'date'      => $date_str,
 				'status'    => $status_remain['status'],
@@ -53,6 +58,35 @@ class TC_Availability {
 		}
 
 		return $grid;
+	}
+
+	/**
+	 * GitHub follow-up - "no booking can be made for the next two days. So
+	 * today it is Tuesday and then you cannot book for Wednesday or
+	 * Thursday. Friday will be the first available date." The first date a
+	 * CUSTOMER can book, as 'Y-m-d' in Amsterdam time (this business only
+	 * operates in the Netherlands - same reasoning as nlToday() in the
+	 * front-end scripts): TC_BOOKING_BLOCKED_DAYS_AHEAD full days after
+	 * today are closed, and so is today itself, whenever that setting is
+	 * above 0 - with 2 and a Tuesday, Friday is the first open date. 0
+	 * turns the rule off entirely, back to the original behavior (today
+	 * and later all bookable). Filterable via tc_booking_blocked_days_
+	 * ahead.
+	 *
+	 * Applied only to what customers see and can submit (get_grid(), and
+	 * TC_Rest_Api::create_booking()'s re-check) - NOT inside is_bookable()
+	 * itself, which the admin screens (manual booking, rescheduling) also
+	 * use, and staff must still be able to take or move a short-notice
+	 * booking by hand.
+	 */
+	public static function earliest_bookable_date() {
+		$days  = defined( 'TC_BOOKING_BLOCKED_DAYS_AHEAD' ) ? (int) TC_BOOKING_BLOCKED_DAYS_AHEAD : 0;
+		$days  = max( 0, (int) apply_filters( 'tc_booking_blocked_days_ahead', $days ) );
+		$first = new DateTime( 'today', new DateTimeZone( 'Europe/Amsterdam' ) );
+		if ( $days > 0 ) {
+			$first->modify( '+' . ( $days + 1 ) . ' days' );
+		}
+		return $first->format( 'Y-m-d' );
 	}
 
 	/**
