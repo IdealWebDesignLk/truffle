@@ -45,7 +45,7 @@ class TC_Availability {
 			$date_str = $cursor->format( 'Y-m-d' );
 			// Inside the short-notice window (see earliest_bookable_date()):
 			// shown as closed to customers, whatever the guides' calendars say.
-			$status_remain = $date_str < $earliest
+			$status_remain = ( $service['hidden'] || $date_str < $earliest )
 				? array( 'status' => 'off', 'remaining' => null )
 				: self::get_date_status_and_remaining( $service, $guide_ids, $date_str, $location_id );
 			$grid[]        = array(
@@ -633,6 +633,11 @@ class TC_Availability {
 			// calendar), defaulting to '' so the front-end falls back to
 			// its normal --available color rather than an empty swatch.
 			'is_special'         => (bool) get_post_meta( $service_id, '_tc_is_special', true ),
+			// "Hide from booking" (Service edit screen) - customer-facing
+			// paths only: not listed by /services, shown closed by
+			// get_grid(), refused by create_booking(). Admin screens and
+			// guide settings deliberately ignore it.
+			'hidden'             => (bool) get_post_meta( $service_id, '_tc_hidden', true ),
 			'special_color'      => (string) get_post_meta( $service_id, '_tc_special_color', true ),
 			// Which locations this special service can happen at - empty
 			// means no restriction (matches how an unset location capacity

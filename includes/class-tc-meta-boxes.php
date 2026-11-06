@@ -23,6 +23,15 @@ class TC_Meta_Boxes {
 		add_action( 'save_post_' . TC_CPT::BOOKING, array( __CLASS__, 'save_booking_note' ) );
 		add_action( 'save_post_' . TC_CPT::BOOKING, array( __CLASS__, 'save_new_booking' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue' ) );
+		add_filter( 'display_post_states', array( __CLASS__, 'mark_hidden_service' ), 10, 2 );
+	}
+
+	/** Shows "Hidden from booking" next to a hidden service in the Services list. */
+	public static function mark_hidden_service( $states, $post ) {
+		if ( TC_CPT::SERVICE === $post->post_type && get_post_meta( $post->ID, '_tc_hidden', true ) ) {
+			$states['tc_hidden'] = __( 'Hidden from booking', 'tc-booking' );
+		}
+		return $states;
 	}
 
 	public static function enqueue( $hook ) {
@@ -236,6 +245,7 @@ class TC_Meta_Boxes {
 		$allow_party   = get_post_meta( $post->ID, '_tc_allow_party', true );
 		$shared_seats  = get_post_meta( $post->ID, '_tc_allow_shared_seats', true );
 		$is_special    = get_post_meta( $post->ID, '_tc_is_special', true );
+		$is_hidden     = get_post_meta( $post->ID, '_tc_hidden', true );
 		$special_color = get_post_meta( $post->ID, '_tc_special_color', true );
 		if ( '' === $special_color ) {
 			// Matches booking-app.css's --limited accent - an already
@@ -257,6 +267,16 @@ class TC_Meta_Boxes {
 		}
 		?>
 		<table class="form-table">
+			<tr>
+				<th><?php esc_html_e( 'Visibility', 'tc-booking' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" id="tc_hidden" name="tc_hidden" value="1" <?php checked( '1', $is_hidden ); ?>>
+						<?php esc_html_e( 'Hide this service from the booking widget', 'tc-booking' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'Customers no longer see this service, its dates, or any special-date highlight for it, and it can\'t be booked online. Nothing is deleted: existing bookings, guide settings, and your own manual bookings in wp-admin all keep working, and unticking this brings it straight back.', 'tc-booking' ); ?></p>
+				</td>
+			</tr>
 			<tr>
 				<th><label for="tc_price"><?php esc_html_e( 'Price (EUR)', 'tc-booking' ); ?></label></th>
 				<td><input type="number" step="0.01" min="0" id="tc_price" name="tc_price" value="<?php echo esc_attr( $price ); ?>" class="regular-text"></td>
@@ -469,6 +489,7 @@ class TC_Meta_Boxes {
 		update_post_meta( $post_id, '_tc_allow_party', isset( $_POST['tc_allow_party'] ) ? '1' : '' );
 		update_post_meta( $post_id, '_tc_allow_shared_seats', isset( $_POST['tc_allow_shared_seats'] ) ? '1' : '' );
 		update_post_meta( $post_id, '_tc_is_special', isset( $_POST['tc_is_special'] ) ? '1' : '' );
+		update_post_meta( $post_id, '_tc_hidden', isset( $_POST['tc_hidden'] ) ? '1' : '' );
 		if ( isset( $_POST['tc_special_color'] ) ) {
 			$color = sanitize_hex_color( wp_unslash( $_POST['tc_special_color'] ) );
 			update_post_meta( $post_id, '_tc_special_color', $color ? $color : '' );

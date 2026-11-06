@@ -2658,6 +2658,41 @@ negative or zero values never open past dates; plus the Tuesday-to-Friday
 example worked out explicitly. Tests compute relative to the real
 "today", so they pass on any date.
 
+## Hiding a service from the booking widget
+
+"Can we add option to hide a service entirely from the booking?" A
+"Hide this service from the booking widget" checkbox at the top of the
+Service edit screen (`_tc_hidden` meta, `'hidden'` in `get_service_data()`).
+Unlike the notice rule, this one is a real per-service admin option, so
+it's a checkbox rather than a constant.
+
+**Enforced on the customer-facing paths only, in the same three places
+as the short-notice rule:** `get_services()` skips it (so its card is
+gone - and since the special-date overlay in the widget is built from
+that same list, a hidden *special* service's highlighted dates vanish
+too, with no front-end change), `get_grid()` returns every date as `off`
+(covers anyone calling the availability endpoint directly), and
+`create_booking()` refuses it with a 409 - a booking request can name any
+service ID, hiding the card alone wouldn't stop that.
+
+**Deliberately untouched:** admin manual booking and rescheduling, the
+guide dashboards/special-date calendars, and every existing booking. Same
+reasoning as the notice rule - this hides a service from *customers*;
+staff can still book it by hand, guides can keep preparing its dates, and
+a customer who already booked it isn't affected. Nothing is deleted, so
+unticking brings it straight back. Hidden services show a "Hidden from
+booking" state next to their name in the Services list so it's visible at
+a glance which ones are off.
+
+Verified with the real `get_services()`, `get_grid()` and
+`create_booking()` against stubbed WP with one visible and one hidden
+service: the hidden one is absent from the catalog, shows every date
+closed even with a free guide, and a direct booking naming it is refused
+with `tc_service_unavailable`, while the visible one sails past every
+check to the save step; and the short-notice rule still works alongside
+it (inside-window dates closed, booking refused with `tc_too_soon`, the
+hidden service staying closed after the window too).
+
 ## Testing performed
 
 This has been tested against a **real WordPress + MySQL install**, not just
