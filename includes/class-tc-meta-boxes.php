@@ -26,10 +26,10 @@ class TC_Meta_Boxes {
 		add_filter( 'display_post_states', array( __CLASS__, 'mark_hidden_service' ), 10, 2 );
 	}
 
-	/** Shows "Hidden from booking" next to a hidden service in the Services list. */
+	/** Shows "Tab hidden" next to a service whose widget tab is hidden, in the Services list. */
 	public static function mark_hidden_service( $states, $post ) {
 		if ( TC_CPT::SERVICE === $post->post_type && get_post_meta( $post->ID, '_tc_hidden', true ) ) {
-			$states['tc_hidden'] = __( 'Hidden from booking', 'tc-booking' );
+			$states['tc_hidden'] = __( 'Tab hidden', 'tc-booking' );
 		}
 		return $states;
 	}
@@ -272,9 +272,9 @@ class TC_Meta_Boxes {
 				<td>
 					<label>
 						<input type="checkbox" id="tc_hidden" name="tc_hidden" value="1" <?php checked( '1', $is_hidden ); ?>>
-						<?php esc_html_e( 'Hide this service from the booking widget', 'tc-booking' ); ?>
+						<?php esc_html_e( 'Hide this service\'s tab in the booking widget', 'tc-booking' ); ?>
 					</label>
-					<p class="description"><?php esc_html_e( 'Customers no longer see this service, its dates, or any special-date highlight for it, and it can\'t be booked online. Nothing is deleted: existing bookings, guide settings, and your own manual bookings in wp-admin all keep working, and unticking this brings it straight back.', 'tc-booking' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Only the service\'s tab/card at the top is hidden. Its available dates still show on the calendar, and a customer can still click one of them and go on to book it - if a date is open for both this service and the one they\'re viewing, they\'re asked which they want. Nothing else changes; unticking this brings the tab back.', 'tc-booking' ); ?></p>
 				</td>
 			</tr>
 			<tr>

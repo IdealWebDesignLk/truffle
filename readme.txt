@@ -3,7 +3,7 @@ Contributors: idealwebdesign
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.0
-Stable tag: 0.48.0
+Stable tag: 0.49.0
 License: GPLv2 or later
 
 Custom booking system for truffelceremonie.com. Replaces the Amelia-based booking widget with a purpose-built flow: location (with map) -> availability grid -> extras -> details -> review -> WooCommerce checkout. Guides manage their own calendar through a front-end self-service dashboard.
@@ -25,6 +25,16 @@ See PROJECT_NOTES.md in the plugin root for architecture decisions and the Ameli
 7. Create a page with the shortcode [tc_guide_dashboard] - give guides this URL plus their login, so they can manage their own availability. Admins can also view/edit any guide's calendar directly from Bookings -> Guides -> (edit a guide) -> Availability Calendar, without needing to log in as them.
 
 == Changelog ==
+
+= 0.49.0 =
+* The "hide a service" option now hides only the service's tab/card at the
+  top of the booking widget (the checkbox on the Service edit screen is
+  renamed "Hide this service's tab in the booking widget"). The service
+  stays fully available and bookable: its dates still show on the
+  calendar, and a customer can click one and continue booking. If a date
+  is open for both the service being viewed and the hidden one, the
+  existing choice popup asks which they want. Hidden services show as
+  "Tab hidden" in the Services list.
 
 = 0.48.0 =
 * New "Hide this service from the booking widget" checkbox on each

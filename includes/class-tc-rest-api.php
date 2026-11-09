@@ -297,11 +297,6 @@ class TC_Rest_Api {
 				continue;
 			}
 			$service = TC_Availability::get_service_data( $post->ID );
-			// "Hide from booking" on the Service edit screen - this is the
-			// customer-facing catalog, so a hidden service just isn't in it.
-			if ( ! empty( $service['hidden'] ) ) {
-				continue;
-			}
 			// WPML support - Service is non-translatable (single canonical
 			// post, wpml-config.xml), so its name/description/extras text
 			// is translated as standalone strings instead (WPML -> String
@@ -359,6 +354,9 @@ class TC_Rest_Api {
 				// for special services lives in TC_Availability, not here.
 				'is_special'    => $service['is_special'],
 				'special_color' => $service['special_color'],
+				// Tab hidden in the widget (Service edit screen) - still a
+				// normal, bookable service; see booking-app.js.
+				'hidden'        => $service['hidden'],
 			);
 		}
 		return rest_ensure_response( $data );
@@ -544,12 +542,6 @@ class TC_Rest_Api {
 		if ( ! $service ) {
 			return new WP_Error( 'tc_invalid_service', __( 'Onbekende dienst.', 'tc-booking' ), array( 'status' => 400 ) );
 		}
-		// Hidden from booking (Service edit screen) - the widget never lists
-		// it, but a booking request can name any service ID directly.
-		if ( ! empty( $service['hidden'] ) ) {
-			return new WP_Error( 'tc_service_unavailable', __( 'Deze dienst is op dit moment niet beschikbaar voor online boeking.', 'tc-booking' ), array( 'status' => 409 ) );
-		}
-
 		// Short-notice rule (TC_BOOKING_BLOCKED_DAYS_AHEAD) - the grid already
 		// shows these dates closed, but the booking request itself can be
 		// sent directly, so it's enforced here too.

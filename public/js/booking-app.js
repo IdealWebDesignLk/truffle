@@ -672,7 +672,7 @@
 		var cardsArea = state.servicesLoading
 			? '<p>' + escapeHtml( I18N.loadingServices ) + '</p>'
 			: ( state.services.length
-				? '<div class="tc-svc-cards">' + state.services.map( function ( svc ) {
+				? '<div class="tc-svc-cards">' + state.services.filter( function ( svc ) { return ! svc.hidden; } ).map( function ( svc ) {
 					var selected = svc.id === state.serviceId;
 					// GitHub follow-up - the duration badge ("1 dag"/"2
 					// dagen") that used to sit here is hidden too now, per
@@ -1211,7 +1211,11 @@
 					state.serviceId = null;
 				}
 				if ( ! state.serviceId && state.services.length ) {
-					state.serviceId = state.services[ 0 ].id;
+					// A service with its tab hidden (Service edit screen) is
+					// still bookable but never the default - fall back to it
+					// only if every service here is hidden.
+					var visible = state.services.filter( function ( s ) { return ! s.hidden; } );
+					state.serviceId = ( visible.length ? visible[ 0 ] : state.services[ 0 ] ).id;
 				}
 				render();
 				loadGrid();
@@ -1265,7 +1269,9 @@
 		var token = state.locationId + ':' + state.serviceId + ':' + state.monthOffset;
 		state.specialOverlayToken = token;
 
-		var specials = state.services.filter( function ( s ) { return s.is_special && s.id !== state.serviceId; } );
+		// A tab-hidden service's dates are overlaid like a special service's,
+		// so they stay visible and clickable on the calendar.
+		var specials = state.services.filter( function ( s ) { return ( s.is_special || s.hidden ) && s.id !== state.serviceId; } );
 		if ( ! specials.length ) {
 			state.specialGrids = {};
 			render();
